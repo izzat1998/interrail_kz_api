@@ -159,9 +159,8 @@ static/
 ehthumbs.db
 Thumbs.db
 
-# Migration files (include migrations but exclude __init__.py)
-*/migrations/*
-!*/migrations/__init__.py
+# Migration files should be included in version control
+# Only exclude __pycache__ directories (already handled by __pycache__/ rule above)
 
 # Node modules (if using frontend tools)
 node_modules/
@@ -171,7 +170,6 @@ yarn-error.log*
 
 # Logs
 logs
-*.log
 
 # Runtime data
 pids

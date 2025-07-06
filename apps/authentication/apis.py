@@ -3,11 +3,13 @@ from rest_framework.decorators import permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken, UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from drf_spectacular.utils import extend_schema, OpenApiExample
 from drf_spectacular.openapi import OpenApiTypes
 
+from .authentication import CookieJWTAuthentication
 from .services import AuthenticationServices
 from .selectors import AuthenticationSelectors
 
@@ -26,7 +28,7 @@ class LoginApiView(APIView):
     @extend_schema(
         tags=['Authentication'],
         summary='User Login',
-        description='Authenticate user with username/password and return JWT tokens',
+        description='Authenticate user with username/password and set JWT tokens as HTTP-only cookies',
         request=LoginSerializer,
         examples=[
             OpenApiExample(
@@ -40,22 +42,10 @@ class LoginApiView(APIView):
             OpenApiExample(
                 'Success Response',
                 value={
-                    'success': True,
-                    'message': 'Login successful',
-                    'data': {
-                        'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-                        'refresh_token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-                        'user': {
-                            'id': 1,
-                            'username': 'john_doe',
-                            'email': 'john@example.com',
-                            'user_type': 'customer',
-                            'telegram_id': '123456789',
-                            'telegram_username': 'john_doe_tg'
-                        }
-                    }
+                    'success': True
                 },
                 response_only=True,
+                description='JWT tokens are set as HTTP-only cookies (access_token, refresh_token)'
             )
         ],
         responses={
@@ -72,12 +62,30 @@ class LoginApiView(APIView):
                 username=serializer.validated_data['username'],
                 password=serializer.validated_data['password']
             )
-            
-            return Response({
+            access = str(auth_data['access'])
+            refresh = str(auth_data['refresh'])
+
+            res =  Response({
                 'success': True,
-                'message': 'Login successful',
-                'data': auth_data
             }, status=status.HTTP_200_OK)
+            # Set HttpOnly cookie
+            res.set_cookie(
+                key='access_token',
+                value=access,
+                httponly=True,
+                secure=True,  # set False if testing on http
+                samesite='None',  # Changed from None to Lax for HTTP
+                max_age=60,
+            )
+            res.set_cookie(
+                key='refresh_token',
+                value=refresh,
+                httponly=True,
+                secure=True,
+                samesite='None',  # Changed from None to Lax for HTTP
+                max_age=300,
+            )
+            return res
             
         except ValueError as e:
             return Response({
@@ -182,55 +190,32 @@ class RegisterApiView(APIView):
 
 class VerifyTokenApiView(APIView):
     """
-    Verify JWT token validity
+    Verify JWT token and return user information
     """
-    permission_classes = [AllowAny]
-
-    class VerifyTokenSerializer(serializers.Serializer):
-        token = serializers.CharField()
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=['Authentication'],
         summary='Verify JWT Token',
-        description='Verify if JWT token is valid and return user information',
-        request=VerifyTokenSerializer,
+        description='Verify JWT token validity and return user information and token details',
         examples=[
             OpenApiExample(
-                'Verify Token Example',
+                'Success Response',
                 value={
-                    'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
-                },
-                request_only=True,
-            ),
-            OpenApiExample(
-                'Valid Token Response',
-                value={
-                    'success': True,
-                    'message': 'Token is valid',
-                    'data': {
-                        'user': {
-                            'id': 1,
-                            'username': 'john_doe',
-                            'email': 'john@example.com',
-                            'user_type': 'customer',
-                            'telegram_id': '123456789',
-                            'telegram_username': 'john_doe_tg'
-                        },
-                        'token_info': {
-                            'exp': 1640995200,
-                            'iat': 1640991600,
-                            'jti': 'abc123def456',
-                            'user_id': 1
-                        }
+                    "user": {
+                        "id": 1,
+                        "username": "john_doe",
+                        "email": "john@example.com",
+                        "user_type": "customer",
+                        "telegram_id": "123456789",
+                        "telegram_username": "john_doe_tg",
+                    },
+                    "token_info": {
+                        "exp": 1640995200,
+                        "iat": 1640991600,
+                        "user_id": 1,
                     }
-                },
-                response_only=True,
-            ),
-            OpenApiExample(
-                'Invalid Token Response',
-                value={
-                    'success': False,
-                    'message': 'Invalid or expired token'
                 },
                 response_only=True,
             )
@@ -241,22 +226,69 @@ class VerifyTokenApiView(APIView):
         }
     )
     def post(self, request):
-        serializer = self.VerifyTokenSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        return Response({
+            "user": {
+                "id": request.user.id,
+                "username": request.user.username,
+                "email": request.user.email,
+                "user_type": getattr(request.user, 'user_type', None),
+                "telegram_id": getattr(request.user, 'telegram_id', None),
+                "telegram_username": getattr(request.user, 'telegram_username', None),
+            },
+            "token_info": {
+                "exp": request.auth.payload['exp'],
+                "iat": request.auth.payload['iat'],
+                "user_id": request.auth.payload['user_id'],
+            }
+        })
+class RefreshTokenApiView(APIView):
+    """
+    Token refresh endpoint using HTTP-only cookies
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Authentication'],
+        summary='Refresh JWT Token',
+        description='Refresh JWT tokens using HTTP-only refresh token cookie and set new tokens as cookies',
+        examples=[
+            OpenApiExample(
+                'Success Response',
+                value={
+                    'success': True
+                },
+                response_only=True,
+                description='New JWT tokens are set as HTTP-only cookies (access_token, refresh_token)'
+            )
+        ],
+        responses={
+            200: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+        }
+    )
+    def post(self, request):
+        # Get refresh token from HTTP-only cookie
+        refresh_token_str = request.COOKIES.get('refresh_token')
+        
+        if not refresh_token_str:
+            return Response({
+                'success': False,
+                'message': 'Refresh token not found in cookies'
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
-            # Verify token
-            token = UntypedToken(serializer.validated_data['token'])
+            print("Attempting to refresh token with:", refresh_token_str)
+            # Validate refresh token
+            refresh_token = RefreshToken(refresh_token_str)
             
-            # Get user from token
-            user_id = token.payload.get('user_id')
+            # Get user and generate new tokens
+            user_id = refresh_token.payload.get('user_id')
             if not user_id:
                 return Response({
                     'success': False,
                     'message': 'Invalid token payload'
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
-            # Get user instance
             from apps.accounts.models import CustomUser
             try:
                 user = CustomUser.objects.get(id=user_id)
@@ -266,71 +298,73 @@ class VerifyTokenApiView(APIView):
                     'message': 'User not found'
                 }, status=status.HTTP_401_UNAUTHORIZED)
             
-            if not user.is_active:
-                return Response({
-                    'success': False,
-                    'message': 'User account is disabled'
-                }, status=status.HTTP_401_UNAUTHORIZED)
+            # Generate new refresh token for rotation
+            new_refresh_token = RefreshToken.for_user(user)
+            new_access_token = new_refresh_token.access_token
             
-            return Response({
-                'success': True,
-                'message': 'Token is valid',
-                'data': {
-                    'user': {
-                        'id': user.id,
-                        'username': user.username,
-                        'email': user.email,
-                        'user_type': user.user_type,
-                        'telegram_id': user.telegram_id,
-                        'telegram_username': user.telegram_username,
-                    },
-                    'token_info': {
-                        'exp': token.payload.get('exp'),
-                        'iat': token.payload.get('iat'),
-                        'jti': token.payload.get('jti'),
-                        'user_id': token.payload.get('user_id'),
-                    }
-                }
+            # Add custom claims to new access token
+            new_access_token['user_type'] = user.user_type
+            new_access_token['telegram_id'] = user.telegram_id
+            
+            # Blacklist old refresh token
+            refresh_token.blacklist()
+            
+            # Create response with success message
+            res = Response({
+                'success': True
             }, status=status.HTTP_200_OK)
+            
+            # Set new tokens as HTTP-only cookies
+            res.set_cookie(
+                key='access_token',
+                value=str(new_access_token),
+                httponly=True,
+                secure=True,  # set False if testing on http
+                samesite='None',  # Changed from None to Lax for HTTP
+                max_age=60,  # 1 hour
+            )
+            res.set_cookie(
+                key='refresh_token',
+                value=str(new_refresh_token),
+                httponly=True,
+                secure=True,
+                samesite='None',  # Changed from None to Lax for HTTP
+                max_age=300,  # 7 days
+            )
+            
+            return res
             
         except (InvalidToken, TokenError):
             return Response({
                 'success': False,
-                'message': 'Invalid or expired token'
+                'message': 'Invalid or expired refresh token'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        except Exception:
+            return Response({
+                'success': False,
+                'message': 'Token refresh failed'
             }, status=status.HTTP_401_UNAUTHORIZED)
 
 
-class RefreshTokenApiView(APIView):
+class LogoutApiView(APIView):
     """
-    Token refresh endpoint
+    User logout endpoint using HTTP-only cookies
     """
     permission_classes = [AllowAny]
 
-    class RefreshTokenSerializer(serializers.Serializer):
-        refresh = serializers.CharField()
-
     @extend_schema(
         tags=['Authentication'],
-        summary='Refresh JWT Token',
-        description='Get a new access token using refresh token',
-        request=RefreshTokenSerializer,
+        summary='User Logout',
+        description='Logout user by blacklisting refresh token from HTTP-only cookies and clearing all auth cookies',
         examples=[
-            OpenApiExample(
-                'Refresh Token Example',
-                value={
-                    'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
-                },
-                request_only=True,
-            ),
             OpenApiExample(
                 'Success Response',
                 value={
                     'success': True,
-                    'data': {
-                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
-                    }
+                    'message': 'Logout successful'
                 },
                 response_only=True,
+                description='Refresh token is blacklisted and all auth cookies are cleared'
             )
         ],
         responses={
@@ -339,93 +373,36 @@ class RefreshTokenApiView(APIView):
         }
     )
     def post(self, request):
-        serializer = self.RefreshTokenSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            refresh_token = RefreshToken(serializer.validated_data['refresh'])
-            access_token = refresh_token.access_token
-            
-            # Add custom claims if user exists
-            user_id = refresh_token.payload.get('user_id')
-            if user_id:
-                from apps.accounts.models import CustomUser
-                try:
-                    user = CustomUser.objects.get(id=user_id)
-                    access_token['user_type'] = user.user_type
-                    access_token['telegram_id'] = user.telegram_id
-                except CustomUser.DoesNotExist:
-                    pass
-            
-            return Response({
-                'success': True,
-                'data': {
-                    'access': str(access_token)
-                }
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({
-                'success': False,
-                'message': 'Invalid refresh token'
-            }, status=status.HTTP_401_UNAUTHORIZED)
-
-
-class LogoutApiView(APIView):
-    """
-    User logout endpoint (blacklist refresh token)
-    """
-    permission_classes = [IsAuthenticated]
-
-    class LogoutSerializer(serializers.Serializer):
-        refresh = serializers.CharField()
-
-    @extend_schema(
-        tags=['Authentication'],
-        summary='User Logout',
-        description='Logout user by blacklisting the refresh token',
-        request=LogoutSerializer,
-        examples=[
-            OpenApiExample(
-                'Logout Example',
-                value={
-                    'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...'
-                },
-                request_only=True,
-            ),
-            OpenApiExample(
-                'Success Response',
-                value={
-                    'success': True,
-                    'message': 'Logout successful'
-                },
-                response_only=True,
-            )
-        ],
-        responses={
-            200: OpenApiTypes.OBJECT,
-            400: OpenApiTypes.OBJECT,
-        }
-    )
-    def post(self, request):
-        serializer = self.LogoutSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            AuthenticationServices.blacklist_refresh_token(
-                refresh_token=serializer.validated_data['refresh']
-            )
-            
-            return Response({
-                'success': True,
-                'message': 'Logout successful'
-            }, status=status.HTTP_200_OK)
-            
-        except ValueError as e:
-            return Response({
-                'success': False,
-                'message': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Get refresh token from HTTP-only cookie
+        refresh_token_str = request.COOKIES.get('refresh_token')
+        
+        # Create response first
+        res = Response({
+            'success': True,
+            'message': 'Logout successful'
+        }, status=status.HTTP_200_OK)
+        
+        # Clear auth cookies regardless of token validity
+        res.delete_cookie(
+            key='access_token',
+            samesite='None',
+        )
+        res.delete_cookie(
+            key='refresh_token', 
+            samesite='None',
+        )
+        
+        # If refresh token exists, try to blacklist it
+        if refresh_token_str:
+            try:
+                refresh_token = RefreshToken(refresh_token_str)
+                refresh_token.blacklist()
+            except (InvalidToken, TokenError, Exception):
+                # Token might be invalid/expired, but still clear cookies
+                # Don't fail the logout process
+                pass
+        
+        return res
 
 
 

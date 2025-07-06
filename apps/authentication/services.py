@@ -35,16 +35,8 @@ class AuthenticationServices:
         update_last_login(None, user)
         
         return {
-            'access_token': str(access_token),
-            'refresh_token': str(refresh),
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'user_type': user.user_type,
-                'telegram_id': user.telegram_id,
-                'telegram_username': user.telegram_username,
-            }
+            'access': str(access_token),
+            'refresh': str(refresh),
         }
 
     @staticmethod
