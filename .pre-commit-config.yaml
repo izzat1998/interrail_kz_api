@@ -1,0 +1,55 @@
+repos:
+  # Black code formatter
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3
+        types: [python]
+        args: [--line-length=88]
+
+  # Ruff linter (replaces isort, flake8, pyupgrade)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.2
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  # Bandit security checks
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: [--skip, B311]
+        files: ^apps/.*\.py$
+        exclude: ^(tests/|.*/migrations/)
+
+  # Django specific checks
+  - repo: local
+    hooks:
+      - id: django-check
+        name: Django Check
+        entry: python manage.py check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+
+      - id: pytest-check
+        name: Run Tests
+        entry: python -m pytest tests/ -x --tb=short
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]  # Only run on pre-push to save time
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-docstring-first

@@ -1,0 +1,2 @@
+class CoreSelectors:
+    pass

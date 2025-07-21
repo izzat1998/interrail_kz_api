@@ -1,10 +1,13 @@
 from collections import OrderedDict
 
 from rest_framework.pagination import LimitOffsetPagination as _LimitOffsetPagination
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 
-def get_paginated_response(*, pagination_class, serializer_class, queryset, request, view):
+def get_paginated_response(
+    *, pagination_class, serializer_class, queryset, request, view
+):
     paginator = pagination_class()
 
     page = paginator.paginate_queryset(queryset, request, view=view)
@@ -51,3 +54,12 @@ class LimitOffsetPagination(_LimitOffsetPagination):
                 ]
             )
         )
+
+
+class CustomPageNumberPagination(PageNumberPagination):
+    page_query_param = "page"  # default is already 'page'
+    page_size_query_param = (
+        "page_size"  # allow client to set page size via `?per_page=20`
+    )
+    max_page_size = 100  # limit maximum per_page
+    page_size = 10  # default per_page if not provided

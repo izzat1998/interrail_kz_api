@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Django 5.2.4 REST API project for Interrail Kazakhstan with JWT authentication. The project follows Django Styleguide architecture patterns with services/selectors and uses PostgreSQL as the database.
+This is a Django 5.2.4 REST API project for IK with JWT authentication. The project follows Django Styleguide architecture patterns with services/selectors and uses PostgreSQL as the database.
 
 ## Architecture
 
@@ -156,8 +156,63 @@ The CustomUser model supports three user types:
 - **Blacklisting**: Enabled for logout functionality
 - **Custom Claims**: user_type, telegram_id included in tokens
 
+## Pre-Commit Workflow
+
+The project uses comprehensive pre-commit checks to ensure code quality. **Always run these checks before committing:**
+
+### Automated Checks (on commit/push)
+
+```bash
+# These run automatically when you commit/push
+git add .
+git commit -m "Your message"  # Triggers pre-commit hooks
+git push                      # Triggers pre-push tests
+```
+
+### Manual Check Scripts
+
+```bash
+# Quick essential checks (recommended before every commit)
+./scripts/quick-check.sh
+
+# Full comprehensive checks (recommended before major commits)
+./scripts/pre-commit-full.sh
+```
+
+### Pre-commit Hooks Include:
+
+1. **Code Quality**:
+   - Black code formatting
+   - Ruff linting (replaces isort, flake8, pyupgrade)
+   - Trailing whitespace and file ending fixes
+
+2. **Security & Django**:
+   - Bandit security analysis
+   - Django system checks
+   - Migration checks
+
+3. **Testing**:
+   - Test collection verification
+   - Full test suite (on pre-push)
+
+### Pre-commit Commands
+
+```bash
+# Install pre-commit hooks
+pre-commit install
+pre-commit install --hook-type pre-push
+
+# Run hooks manually
+pre-commit run --all-files
+pre-commit run --files <file1> <file2>
+
+# Update hook versions
+pre-commit autoupdate
+```
+
 ## Important Notes
 
+- **NEVER commit without running pre-commit checks**
 - Ensure PostgreSQL is running and accessible with the credentials in `.env`
 - The `.env` file contains sensitive information and should not be committed to version control
 - JWT tokens include custom claims for user_type and telegram_id
