@@ -58,8 +58,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "ckeditor",
     # Local apps
-    "apps.core",
     "apps.accounts",
+    "apps.core",
     "apps.authentication",
     "apps.inquiries",
 ]
