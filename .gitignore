@@ -159,8 +159,10 @@ static/
 ehthumbs.db
 Thumbs.db
 
-# Migration files should be included in version control
-# Only exclude __pycache__ directories (already handled by __pycache__/ rule above)
+# Django migrations - ignore all migration files except __init__.py
+**/migrations/[0-9]*.py
+# Keep __init__.py files in migrations directories
+!**/migrations/__init__.py
 
 # Node modules (if using frontend tools)
 node_modules/
