@@ -334,9 +334,7 @@ class TelegramNotifier:
         print(f"DEBUG: Message content: {message[:200]}...")  # noqa: T201
         response = self.send_request("editMessageText", data)
         if not response.get("ok", False):
-            print(
-                f"DEBUG: Telegram API error in success notification: {response}"
-            )  # noqa: T201
+            print(f"DEBUG: Telegram API error in success notification: {response}")  # noqa: T201
         return response.get("ok", False)
 
     def send_pipeline_failure(self, message_id: int, context: dict) -> bool:
@@ -528,9 +526,7 @@ def main():
                     f"DEBUG: Sending success notification to message_id: {message_id}"
                 )
                 print(f"DEBUG: Context keys: {list(context.keys())}")  # noqa: T201
-                print(
-                    f"DEBUG: Test summary: {context.get('test_summary')}"
-                )  # noqa: T201
+                print(f"DEBUG: Test summary: {context.get('test_summary')}")  # noqa: T201
                 print(f"DEBUG: Coverage: {context.get('coverage')}")  # noqa: T201
                 result = notifier.send_pipeline_success(message_id, context)
                 print(f"DEBUG: Success notification result: {result}")  # noqa: T201

@@ -1,13 +1,4 @@
 repos:
-  # Black code formatter
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-        language_version: python3
-        types: [python]
-        args: [--line-length=88]
-
   # Ruff linter (replaces isort, flake8, pyupgrade)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.2

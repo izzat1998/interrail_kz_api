@@ -62,9 +62,9 @@ class TestUserTypePermissions:
 
         for url in inquiry_urls:
             response = api_client.get(url)
-            assert (
-                response.status_code == status.HTTP_403_FORBIDDEN
-            ), f"Customer should not access {url}"
+            assert response.status_code == status.HTTP_403_FORBIDDEN, (
+                f"Customer should not access {url}"
+            )
 
         # Manager should have access
         refresh = RefreshToken.for_user(manager_user)
@@ -72,9 +72,9 @@ class TestUserTypePermissions:
 
         for url in inquiry_urls:
             response = api_client.get(url)
-            assert (
-                response.status_code == status.HTTP_200_OK
-            ), f"Manager should access {url}"
+            assert response.status_code == status.HTTP_200_OK, (
+                f"Manager should access {url}"
+            )
 
         # Admin should have access
         refresh = RefreshToken.for_user(admin_user)
@@ -82,9 +82,9 @@ class TestUserTypePermissions:
 
         for url in inquiry_urls:
             response = api_client.get(url)
-            assert (
-                response.status_code == status.HTTP_200_OK
-            ), f"Admin should access {url}"
+            assert response.status_code == status.HTTP_200_OK, (
+                f"Admin should access {url}"
+            )
 
     def test_inquiry_creation_permissions(
         self, api_client, customer_user, manager_user
