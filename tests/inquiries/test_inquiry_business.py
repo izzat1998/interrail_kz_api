@@ -467,7 +467,7 @@ class TestInquiryBusinessValidation:
             )
 
             updated = InquiryServices.update_inquiry(inquiry=test_inquiry, status=w)
-            assert updated.status == status
+            assert updated.status == w
 
     def test_new_customer_flag_logic(self, manager_user):
         """Test new customer flag business logic."""
