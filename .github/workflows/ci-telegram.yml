@@ -134,12 +134,12 @@ jobs:
       - name: 🗄️ Database Setup
         run: |
           python scripts/telegram_notifier.py update "🗄️ Setting up Database" 50 "running"
-          python manage.py migrate --settings=voucher_api.test_settings
+          python manage.py migrate
         env:
           SECRET_KEY: test-secret-key
           DEBUG: True
           USE_POSTGRES: True
-          DB_NAME: test_voucher_api
+          DB_NAME: test_interrail_kz_api
           DB_USER: postgres
           DB_PASSWORD: postgres
           DB_HOST: localhost
@@ -224,7 +224,7 @@ jobs:
           SECRET_KEY: test-secret-key
           DEBUG: True
           USE_POSTGRES: True
-          DB_NAME: test_voucher_api
+          DB_NAME: test_interrail_kz_api
           DB_USER: postgres
           DB_PASSWORD: postgres
           DB_HOST: localhost
@@ -237,7 +237,7 @@ jobs:
 
           # Run Django checks
           echo "Running Django system checks..."
-          python manage.py check --settings=voucher_api.test_settings
+          python manage.py check
 
           echo "Django checks passed!"
           echo "Build validation completed!"
@@ -248,7 +248,7 @@ jobs:
           SECRET_KEY: test-secret-key
           DEBUG: True
           USE_POSTGRES: True
-          DB_NAME: test_voucher_api
+          DB_NAME: test_interrail_kz_api
           DB_USER: postgres
           DB_PASSWORD: postgres
           DB_HOST: localhost
