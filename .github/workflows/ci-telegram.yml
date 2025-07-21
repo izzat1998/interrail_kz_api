@@ -116,12 +116,12 @@ jobs:
           (cd scripts && python telegram_notifier.py update "📦 Installing Dependencies" 20 "running") || true
         env:
           TELEGRAM_CONTEXT_FILE: /tmp/context.json
+        continue-on-error: false
 
       - name: 🔍 Code Quality - Linting
         run: |
           echo "Running linting checks..."
-          cd scripts && python telegram_notifier.py update "🔍 Code Linting" 40 "running" || true
-          cd ..
+          (cd scripts && python telegram_notifier.py update "🔍 Code Linting" 40 "running") || true
 
           # Run actual linting
           ruff check .
@@ -130,10 +130,11 @@ jobs:
           echo "Linting completed successfully!"
         env:
           TELEGRAM_CONTEXT_FILE: /tmp/context.json
+        continue-on-error: false
 
       - name: 🗄️ Database Setup
         run: |
-          python scripts/telegram_notifier.py update "🗄️ Setting up Database" 50 "running"
+          (python scripts/telegram_notifier.py update "🗄️ Setting up Database" 50 "running") || true
           python manage.py migrate
         env:
           SECRET_KEY: test-secret-key
@@ -149,7 +150,7 @@ jobs:
       - name: 🧪 Run Tests
         id: coverage
         run: |
-          python scripts/telegram_notifier.py update "🧪 Running Tests" 70 "running"
+          (python scripts/telegram_notifier.py update "🧪 Running Tests" 70 "running") || true
 
           # Run tests with coverage and detailed output
           pytest --cov=apps --cov-fail-under=80 --cov-report=html --cov-report=json -v --tb=short > test_results.txt 2>&1 || true
@@ -233,7 +234,7 @@ jobs:
 
       - name: 🏗️ Build Check
         run: |
-          python scripts/telegram_notifier.py update "🏗️ Build Validation" 90 "running"
+          (python scripts/telegram_notifier.py update "🏗️ Build Validation" 90 "running") || true
 
           # Run Django checks
           echo "Running Django system checks..."
@@ -243,7 +244,7 @@ jobs:
           echo "Build validation completed!"
 
           # Send 100% completion signal to indicate test job is done
-          python scripts/telegram_notifier.py update "✅ All Steps Completed" 100 "success"
+          (python scripts/telegram_notifier.py update "✅ All Steps Completed" 100 "success") || true
         env:
           SECRET_KEY: test-secret-key
           DEBUG: True
@@ -295,7 +296,7 @@ jobs:
       - name: 📦 Install Security Tools
         run: |
           pip install bandit safety
-          python scripts/telegram_notifier.py update "🔒 Security Scanning" 25 "running"
+          (python scripts/telegram_notifier.py update "🔒 Security Scanning" 25 "running") || true
         env:
           TELEGRAM_CONTEXT_FILE: /tmp/context.json
 
@@ -309,7 +310,7 @@ jobs:
           # Run safety for dependency vulnerabilities
           safety check --json --output safety-report.json || true
 
-          python scripts/telegram_notifier.py update "🛡️ Security Scan Completed" 50 "success"
+          (python scripts/telegram_notifier.py update "🛡️ Security Scan Completed" 50 "success") || true
         env:
           TELEGRAM_CONTEXT_FILE: /tmp/context.json
 
@@ -351,7 +352,7 @@ jobs:
 
     - name: 🚀 Start Deployment Notification
       run: |
-        python scripts/telegram_notifier.py update "🚀 Starting Deployment" 85 "running"
+        (python scripts/telegram_notifier.py update "🚀 Starting Deployment" 85 "running") || true
       env:
         TELEGRAM_CONTEXT_FILE: /tmp/context.json
       continue-on-error: true
@@ -384,7 +385,7 @@ jobs:
     - name: 🎉 Deployment Success Notification
       if: success()
       run: |
-        python scripts/telegram_notifier.py update "🎉 Deployment Completed Successfully" 95 "success"
+        (python scripts/telegram_notifier.py update "🎉 Deployment Completed Successfully" 95 "success") || true
       env:
         TELEGRAM_CONTEXT_FILE: /tmp/context.json
       continue-on-error: true
@@ -392,7 +393,7 @@ jobs:
     - name: ❌ Deployment Failure Notification
       if: failure()
       run: |
-        python scripts/telegram_notifier.py update "❌ Deployment Failed" 85 "failed"
+        (python scripts/telegram_notifier.py update "❌ Deployment Failed" 85 "failed") || true
       env:
         TELEGRAM_CONTEXT_FILE: /tmp/context.json
       continue-on-error: true
@@ -465,7 +466,7 @@ jobs:
           START_TIME=${{ needs.notify-start.outputs.start_time }}
           END_TIME=$(date +%s)
 
-          #ci-c# Handle missing start_time gracefully
+          # Handle missing start_time gracefully
           if [ -z "$START_TIME" ] || [ "$START_TIME" = "null" ]; then
             echo "Warning: START_TIME is missing, using 0 duration"
             DURATION=0
