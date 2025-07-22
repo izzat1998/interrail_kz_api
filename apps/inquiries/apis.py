@@ -35,6 +35,7 @@ class InquiryListApiView(APIView):
             required=False,
             allow_empty=True,
         )
+
         text = serializers.CharField(required=False)
         comment = serializers.CharField(required=False)
         search = serializers.CharField(required=False)
