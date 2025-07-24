@@ -155,7 +155,7 @@ class InquiryCreateApiView(APIView):
         attachment = serializers.FileField(required=False, allow_null=True)
         status = serializers.ChoiceField(
             choices=Inquiry.STATUS_CHOICES,
-            required=True,
+            default=Inquiry.STATUS_CHOICES[0][0],
         )
         comment = serializers.CharField(required=False, allow_blank=True)
         sales_manager_id = serializers.IntegerField(required=True)
