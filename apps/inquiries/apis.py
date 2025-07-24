@@ -1,6 +1,7 @@
 from drf_spectacular.openapi import OpenApiParameter, OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -42,12 +43,11 @@ class InquiryListApiView(APIView):
         is_new_customer = serializers.CharField(required=False)
         sales_manager_id = serializers.IntegerField(required=False)
 
-    class InquiryListOutputSerializer(serializers.Serializer):
-        id = serializers.IntegerField(read_only=True)
-        client = serializers.CharField(read_only=True)
-        text = serializers.CharField(read_only=True)
-        status = serializers.CharField(read_only=True)
-        status_display = serializers.CharField(read_only=True)
+    class InquiryListOutputSerializer(serializers.ModelSerializer):
+        attachment_url = serializers.SerializerMethodField()
+        attachment_name = serializers.SerializerMethodField()
+        has_attachment = serializers.SerializerMethodField()
+        status_display = serializers.CharField(source='get_status_display', read_only=True)
         sales_manager = inline_serializer(
             fields={
                 "id": serializers.IntegerField(read_only=True),
@@ -56,9 +56,23 @@ class InquiryListApiView(APIView):
             },
             allow_null=True,
         )
-        is_new_customer = serializers.BooleanField(read_only=True)
-        created_at = serializers.DateTimeField(read_only=True)
-        updated_at = serializers.DateTimeField(read_only=True)
+
+        class Meta:
+            model = Inquiry
+            fields = [
+                'id', 'client', 'text', 'attachment_url', 'attachment_name',
+                'has_attachment', 'status', 'status_display', 'sales_manager',
+                'is_new_customer', 'created_at', 'updated_at'
+            ]
+
+        def get_attachment_url(self, obj):
+            return obj.attachment.url if obj.attachment else None
+
+        def get_attachment_name(self, obj):
+            return obj.attachment.name.split('/')[-1] if obj.attachment else None
+
+        def get_has_attachment(self, obj):
+            return bool(obj.attachment)
 
     @extend_schema(
         tags=["Inquiries"],
@@ -128,14 +142,17 @@ class InquiryListApiView(APIView):
 class InquiryCreateApiView(APIView):
     """
     Create inquiry
+    Supports both JSON (text) and multipart/form-data (file) requests
     """
 
     authentication_classes = [CookieJWTAuthentication]
     permission_classes = [IsManagerOrAdmin]
+    parser_classes = [JSONParser, MultiPartParser]
 
     class InquiryCreateSerializer(serializers.Serializer):
         client = serializers.CharField(max_length=255, required=True)
-        text = serializers.CharField(required=True)
+        text = serializers.CharField(required=False, allow_blank=True)
+        attachment = serializers.FileField(required=False, allow_null=True)
         status = serializers.ChoiceField(
             choices=Inquiry.STATUS_CHOICES,
             required=True,
@@ -144,10 +161,29 @@ class InquiryCreateApiView(APIView):
         sales_manager_id = serializers.IntegerField(required=True)
         is_new_customer = serializers.BooleanField(default=False)
 
+        def validate(self, data):
+            """Validate that either text or attachment is provided, but not both or neither."""
+            text = data.get('text', '').strip() if data.get('text') else ''
+            attachment = data.get('attachment')
+
+            has_text = bool(text)
+            has_attachment = bool(attachment)
+
+            if has_text and has_attachment:
+                raise serializers.ValidationError("Cannot provide both text and attachment. Choose one.")
+
+            if not has_text and not has_attachment:
+                raise serializers.ValidationError("Must provide either text or attachment.")
+
+            return data
+
     class InquiryCreateOutputSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
         client = serializers.CharField(read_only=True)
-        text = serializers.CharField(read_only=True)
+        text = serializers.CharField(read_only=True, allow_null=True)
+        attachment_url = serializers.CharField(read_only=True, allow_null=True)
+        attachment_name = serializers.CharField(read_only=True, allow_null=True)
+        has_attachment = serializers.BooleanField(read_only=True)
         status = serializers.CharField(read_only=True)
         status_display = serializers.CharField(read_only=True)
         sales_manager = inline_serializer(
@@ -176,7 +212,8 @@ class InquiryCreateApiView(APIView):
         try:
             inquiry = InquiryServices.create_inquiry(
                 client=serializer.validated_data["client"],
-                text=serializer.validated_data["text"],
+                text=serializer.validated_data.get("text"),
+                attachment=serializer.validated_data.get("attachment"),
                 comment=serializer.validated_data.get("comment", ""),
                 sales_manager_id=serializer.validated_data.get("sales_manager_id"),
                 is_new_customer=serializer.validated_data.get("is_new_customer", False),
@@ -205,7 +242,10 @@ class InquiryDetailApiView(APIView):
     class InquiryDetailSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
         client = serializers.CharField(read_only=True)
-        text = serializers.CharField(read_only=True)
+        text = serializers.CharField(read_only=True, allow_null=True)
+        attachment_url = serializers.CharField(read_only=True, allow_null=True)
+        attachment_name = serializers.CharField(read_only=True, allow_null=True)
+        has_attachment = serializers.BooleanField(read_only=True)
         status = serializers.CharField(read_only=True)
         status_display = serializers.CharField(read_only=True)
         sales_manager = inline_serializer(
@@ -244,23 +284,47 @@ class InquiryDetailApiView(APIView):
 class InquiryUpdateApiView(APIView):
     """
     Update inquiry
+    Supports switching between text and file
     """
 
     authentication_classes = [CookieJWTAuthentication]
     permission_classes = [IsManagerOrAdmin]
+    parser_classes = [JSONParser, MultiPartParser]
 
     class InquiryUpdateSerializer(serializers.Serializer):
         client = serializers.CharField(max_length=255, required=False)
-        text = serializers.CharField(required=False)
+        text = serializers.CharField(required=False, allow_blank=True)
+        attachment = serializers.FileField(required=False, allow_null=True)
         status = serializers.ChoiceField(choices=Inquiry.STATUS_CHOICES, required=False)
         comment = serializers.CharField(required=False, allow_blank=True)
         sales_manager_id = serializers.IntegerField(required=False)
         is_new_customer = serializers.BooleanField(required=False)
 
+        def validate(self, data):
+            """Validate content update - if updating content, must provide either text or attachment."""
+            text = data.get('text', '').strip() if data.get('text') else ''
+            attachment = data.get('attachment')
+
+            # If either text or attachment is provided, validate mutual exclusivity
+            if 'text' in data or 'attachment' in data:
+                has_text = bool(text)
+                has_attachment = bool(attachment)
+
+                if has_text and has_attachment:
+                    raise serializers.ValidationError("Cannot provide both text and attachment. Choose one.")
+
+                if not has_text and not has_attachment:
+                    raise serializers.ValidationError("Must provide either text or attachment when updating content.")
+
+            return data
+
     class InquiryUpdateResponseSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
         client = serializers.CharField(read_only=True)
-        text = serializers.CharField(read_only=True)
+        text = serializers.CharField(read_only=True, allow_null=True)
+        attachment_url = serializers.CharField(read_only=True, allow_null=True)
+        attachment_name = serializers.CharField(read_only=True, allow_null=True)
+        has_attachment = serializers.BooleanField(read_only=True)
         status = serializers.CharField(read_only=True)
         status_display = serializers.CharField(read_only=True)
         sales_manager = inline_serializer(
@@ -293,6 +357,7 @@ class InquiryUpdateApiView(APIView):
                 inquiry=inquiry,
                 client=serializer.validated_data.get("client"),
                 text=serializer.validated_data.get("text"),
+                attachment=serializer.validated_data.get("attachment"),
                 status=serializer.validated_data.get("status"),
                 comment=serializer.validated_data.get("comment"),
                 sales_manager_id=serializer.validated_data.get("sales_manager_id"),

@@ -161,9 +161,56 @@ class TestUserServices:
         )
         user_id = user.id
 
-        # Test business logic - user should be deleted
-        user.delete()
+        # Test business logic - user should be hard deleted
+        UserServices.delete_user(user_id=user_id)
         assert not User.objects.filter(id=user_id).exists()
+
+    def test_delete_superuser_fails(self):
+        """Test that deleting superuser fails."""
+        user = User.objects.create_superuser(
+            username="superuser",
+            email="super@example.com",
+            password="password123",
+        )
+
+        with pytest.raises(ValueError, match="Cannot delete superuser"):
+            UserServices.delete_user(user_id=user.id)
+
+    def test_delete_nonexistent_user_fails(self):
+        """Test that deleting non-existent user fails."""
+        with pytest.raises(ValueError, match="User not found"):
+            UserServices.delete_user(user_id=99999)
+
+    def test_delete_user_with_related_inquiries(self):
+        """Test that deleting user with related inquiries works correctly."""
+        from apps.inquiries.models import Inquiry
+
+        # Create user and inquiry
+        user = User.objects.create_user(
+            username="manager_with_inquiries",
+            email="manager@example.com",
+            password="password123",
+            user_type="manager"
+        )
+
+        inquiry = Inquiry.objects.create(
+            client="Test Client",
+            text="Test inquiry",
+            sales_manager=user,
+            status="pending"
+        )
+        inquiry_id = inquiry.id
+
+        # Delete the user
+        UserServices.delete_user(user_id=user.id)
+
+        # User should be deleted
+        assert not User.objects.filter(id=user.id).exists()
+
+        # Inquiry should still exist but with sales_manager set to None
+        inquiry_after_delete = Inquiry.objects.get(id=inquiry_id)
+        assert inquiry_after_delete.sales_manager is None
+        assert inquiry_after_delete.client == "Test Client"
 
 
 @pytest.mark.django_db

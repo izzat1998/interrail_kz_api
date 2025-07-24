@@ -140,7 +140,7 @@ class UserServices:
     @staticmethod
     def delete_user(*, user_id: int) -> None:
         """
-        Soft delete user (deactivate) with validation
+        Hard delete user with validation
         """
         from .selectors import UserSelectors
 
@@ -152,8 +152,8 @@ class UserServices:
         if user.is_superuser:
             raise ValueError("Cannot delete superuser")
 
-        user.is_active = False
-        user.save(update_fields=["is_active"])
+        with transaction.atomic():
+            user.delete()
 
     @staticmethod
     def activate_user(*, user_id: int) -> User:
