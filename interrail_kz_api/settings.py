@@ -244,10 +244,10 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = env.list(
-    "CORS_ALLOWED_ORIGINS", default=["http://localhost:3000", "http://127.0.0.1:3000"]
-)
-
+CORS_ALLOWED_ORIGINS = [
+    "https://systemkz.interrail.uz",
+    "https://system-kz.interrail.uz",
+]
 # For development - set to False since you're using HTTP
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SAMESITE = "Lax"
