@@ -39,6 +39,7 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1,"])
 CSRF_TRUSTED_ORIGINS = [
     "https://systemkz.interrail.uz/",
     "https://system-kz.interrail.uz",
+    "https://b40c9f2b8697.ngrok-free.app",
 ]
 
 # Application definition
@@ -247,6 +248,8 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "https://systemkz.interrail.uz",
     "https://system-kz.interrail.uz",
+    "https://07f4e9cd7ff9.ngrok-free.app",
+    "https://b40c9f2b8697.ngrok-free.app"
 ]
 # For development - set to False since you're using HTTP
 SESSION_COOKIE_SECURE = True

@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .authentication import CookieJWTAuthentication
 from .selectors import AuthenticationSelectors
-from .services import AuthenticationServices
+from .services import AuthenticationServices, TelegramAuthenticationServices
 
 
 # API Views
@@ -555,4 +555,178 @@ class ChangePasswordApiView(APIView):
             return Response(
                 {"success": False, "message": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class TelegramAuthApiView(APIView):
+    """
+    Telegram bot authentication endpoint - check if telegram_id exists
+    """
+
+    permission_classes = [AllowAny]
+
+    class TelegramAuthSerializer(serializers.Serializer):
+        telegram_id = serializers.CharField(max_length=50)
+
+    @extend_schema(
+        tags=["Telegram Authentication"],
+        summary="Telegram ID Authentication",
+        description="Check if telegram_id exists for a manager and authenticate or request phone verification",
+        request=TelegramAuthSerializer,
+        examples=[
+            OpenApiExample(
+                "Telegram Auth Request",
+                value={"telegram_id": "123456789"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "User Found Response",
+                value={
+                    "success": True,
+                    "authenticated": True,
+                    "data": {
+                        "user_id": 1,
+                        "username": "manager_user",
+                        "user_type": "manager",
+                        "telegram_id": "123456789",
+                        "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                        "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                    },
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                "Phone Required Response",
+                value={
+                    "success": True,
+                    "authenticated": False,
+                    "requires_phone": True,
+                    "message": "Please provide your phone number for verification",
+                },
+                response_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+        },
+    )
+    def post(self, request):
+        serializer = self.TelegramAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        telegram_id = serializer.validated_data["telegram_id"]
+
+        # Check if user exists with this telegram_id
+        auth_data = TelegramAuthenticationServices.authenticate_by_telegram_id(
+            telegram_id=telegram_id
+        )
+
+        if auth_data:
+            return Response(
+                {
+                    "success": True,
+                    "authenticated": True,
+                    "data": auth_data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response(
+                {
+                    "success": True,
+                    "authenticated": False,
+                    "requires_phone": True,
+                    "message": "Please provide your phone number for verification",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+
+class TelegramPhoneAuthApiView(APIView):
+    """
+    Telegram phone verification endpoint - link telegram_id to manager by phone
+    """
+
+    permission_classes = [AllowAny]
+
+    class TelegramPhoneAuthSerializer(serializers.Serializer):
+        telegram_id = serializers.CharField(max_length=50)
+        phone = serializers.CharField(max_length=20)
+
+    @extend_schema(
+        tags=["Telegram Authentication"],
+        summary="Telegram Phone Verification",
+        description="Verify manager by phone number and link telegram_id for future authentication",
+        request=TelegramPhoneAuthSerializer,
+        examples=[
+            OpenApiExample(
+                "Phone Verification Request",
+                value={"telegram_id": "123456789", "phone": "+77777777777"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Success Response",
+                value={
+                    "success": True,
+                    "authenticated": True,
+                    "message": "Phone verified successfully. You are now authorized for Telegram access.",
+                    "data": {
+                        "user_id": 1,
+                        "username": "manager_user",
+                        "user_type": "manager",
+                        "telegram_id": "123456789",
+                        "phone": "+77777777777",
+                        "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                        "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                    },
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                "Not Authorized Response",
+                value={
+                    "success": False,
+                    "authenticated": False,
+                    "message": "Phone number not found or you are not authorized to use this bot. Please contact your administrator.",
+                },
+                response_only=True,
+            ),
+        ],
+        responses={
+            200: OpenApiTypes.OBJECT,
+            403: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+        },
+    )
+    def post(self, request):
+        serializer = self.TelegramPhoneAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        telegram_id = serializer.validated_data["telegram_id"]
+        phone = serializer.validated_data["phone"]
+
+        # Try to authenticate by phone and link telegram_id
+        auth_data = TelegramAuthenticationServices.authenticate_by_phone(
+            telegram_id=telegram_id, phone=phone
+        )
+
+        if auth_data:
+            return Response(
+                {
+                    "success": True,
+                    "authenticated": True,
+                    "message": "Phone verified successfully. You are now authorized for Telegram access.",
+                    "data": auth_data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response(
+                {
+                    "success": False,
+                    "authenticated": False,
+                    "message": "Phone number not found or you are not authorized to use this bot. Please contact your administrator.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
             )

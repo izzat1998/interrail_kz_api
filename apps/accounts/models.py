@@ -14,7 +14,8 @@ class CustomUser(AbstractUser):
         choices=USER_TYPES,
         default="customer",
     )
-    telegram_id = models.CharField(max_length=50, null=True, blank=True)
+    phone = models.CharField(max_length=20, null=True, blank=True, unique=True)
+    telegram_id = models.CharField(max_length=50, null=True, blank=True, unique=True)
     telegram_username = models.CharField(max_length=100, null=True, blank=True)
     telegram_access = models.BooleanField(default=False)
     # Timestamp fields
@@ -34,4 +35,6 @@ class CustomUser(AbstractUser):
             models.Index(fields=["is_active"]),
             models.Index(fields=["email"]),
             models.Index(fields=["username"]),
+            models.Index(fields=["phone"]),
+            models.Index(fields=["telegram_id"]),
         ]

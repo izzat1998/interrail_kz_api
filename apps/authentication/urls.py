@@ -6,6 +6,8 @@ from .apis import (
     LogoutApiView,
     RefreshTokenApiView,
     RegisterApiView,
+    TelegramAuthApiView,
+    TelegramPhoneAuthApiView,
     UserProfileApiView,
     VerifyTokenApiView,
 )
@@ -20,4 +22,6 @@ urlpatterns = [
     path("profile/", UserProfileApiView.as_view(), name="profile"),
     path("change-password/", ChangePasswordApiView.as_view(), name="change-password"),
     path("verify-token/", VerifyTokenApiView.as_view(), name="verify-token"),
+    path("telegram/", TelegramAuthApiView.as_view(), name="telegram-auth"),
+    path("telegram/phone/", TelegramPhoneAuthApiView.as_view(), name="telegram-phone-auth"),
 ]

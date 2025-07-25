@@ -101,3 +101,98 @@ class AuthenticationServices:
 
         user.set_password(new_password)
         user.save(update_fields=["password"])
+
+
+class TelegramAuthenticationServices:
+    """
+    Services for Telegram bot authentication
+    """
+
+    @staticmethod
+    def authenticate_by_telegram_id(*, telegram_id: str) -> dict | None:
+        """
+        Authenticate user by telegram_id if they are a manager
+        Returns user data with JWT tokens or None if not found
+        """
+        try:
+            user = CustomUser.objects.get(
+                telegram_id=telegram_id,
+                user_type__in=["manager", "admin"],
+                is_active=True
+            )
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            access_token = refresh.access_token
+
+            # Add custom claims
+            access_token["user_type"] = user.user_type
+            access_token["telegram_id"] = user.telegram_id
+
+            # Update last login
+            update_last_login(None, user)
+
+            return {
+                "user_id": user.id,
+                "username": user.username,
+                "user_type": user.user_type,
+                "telegram_id": user.telegram_id,
+                "access": str(access_token),
+                "refresh": str(refresh),
+            }
+
+        except CustomUser.DoesNotExist:
+            return None
+
+    @staticmethod
+    def authenticate_by_phone(*, telegram_id: str, phone: str) -> dict | None:
+        """
+        Find manager by phone and link telegram_id if found
+        Returns user data with JWT tokens or None if not authorized
+        """
+        try:
+            user = CustomUser.objects.get(
+                phone=phone,
+                user_type__in=["manager", "admin"],
+                is_active=True
+            )
+
+            # Link telegram_id to user
+            user.telegram_id = telegram_id
+            user.telegram_access = True
+            user.save(update_fields=["telegram_id", "telegram_access", "updated_at"])
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            access_token = refresh.access_token
+
+            # Add custom claims
+            access_token["user_type"] = user.user_type
+            access_token["telegram_id"] = user.telegram_id
+
+            # Update last login
+            update_last_login(None, user)
+
+            return {
+                "user_id": user.id,
+                "username": user.username,
+                "user_type": user.user_type,
+                "telegram_id": user.telegram_id,
+                "phone": user.phone,
+                "access": str(access_token),
+                "refresh": str(refresh),
+            }
+
+        except CustomUser.DoesNotExist:
+            return None
+
+    @staticmethod
+    def check_telegram_id_exists(*, telegram_id: str) -> bool:
+        """
+        Check if telegram_id already exists for any manager
+        """
+        return CustomUser.objects.filter(
+            telegram_id=telegram_id,
+            user_type__in=["manager", "admin"],
+            is_active=True
+        ).exists()
