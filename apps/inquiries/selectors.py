@@ -60,29 +60,21 @@ class InquirySelectors:
         return CustomUser.objects.get(id=manager_id)
 
     @staticmethod
-    def get_sales_manager_by_id_or_telegram(*, manager_id) -> CustomUser:
+    def get_sales_manager_by_id_or_telegram(*, manager_id: str | int) -> CustomUser:
         """
         Get sales manager by system ID or telegram ID
-        Handles both integer ID (system) and string telegram_id
+        Args:
+            manager_id: Can be either system ID (int) or telegram_id (str)
+        Returns:
+            CustomUser instance
         """
-        # If it's an integer, definitely use system ID
-        if isinstance(manager_id, int):
+        try:
+            # First try to get by telegram_id
+            return CustomUser.objects.get(telegram_id=manager_id)
+        except CustomUser.DoesNotExist:
+            # If not found, try to get by system ID
             return CustomUser.objects.get(id=manager_id)
 
-        # If it's a string, try both approaches
-        if isinstance(manager_id, str):
-            # First try as system ID if it's numeric and reasonable length for an ID
-            if manager_id.isdigit() and len(manager_id) <= 15:  # System IDs are usually shorter
-                try:
-                    return CustomUser.objects.get(id=int(manager_id))
-                except CustomUser.DoesNotExist:
-                    pass  # Fall through to telegram_id lookup
-
-            # Try as telegram_id
-            return CustomUser.objects.get(telegram_id=str(manager_id))
-
-        # Fallback for other types, convert to string and try telegram_id
-        return CustomUser.objects.get(telegram_id=str(manager_id))
 
     @staticmethod
     def get_inquiries_list(
