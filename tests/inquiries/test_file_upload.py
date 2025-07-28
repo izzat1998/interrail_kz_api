@@ -86,26 +86,30 @@ class TestInquiryFileUpload:
         assert "test_inquiry" in inquiry.attachment.name
         assert inquiry.attachment.name.endswith(".txt")
 
-    def test_create_inquiry_with_both_text_and_file_fails(self, manager_user, sample_file):
-        """Test that providing both text and file fails."""
-        with pytest.raises(ValueError, match="Cannot provide both text and attachment"):
-            InquiryServices.create_inquiry(
-                client="Both Client",
-                text="This is text",
-                attachment=sample_file,
-                sales_manager_id=manager_user.id,
-            )
+    def test_create_inquiry_with_both_text_and_file_succeeds(self, manager_user, sample_file):
+        """Test that providing both text and file succeeds."""
+        inquiry = InquiryServices.create_inquiry(
+            client="Both Client",
+            text="This is text",
+            attachment=sample_file,
+            sales_manager_id=manager_user.id,
+        )
+
+        assert inquiry.client == "Both Client"
+        assert inquiry.text == "This is text"
+        assert inquiry.attachment is not None
+        assert "test_inquiry" in inquiry.attachment.name
 
     def test_create_inquiry_with_neither_text_nor_file_fails(self, manager_user):
         """Test that providing neither text nor file fails."""
-        with pytest.raises(ValueError, match="Must provide either text or attachment"):
+        with pytest.raises(ValueError, match="Must provide either text or attachment \\(or both\\)"):
             InquiryServices.create_inquiry(
                 client="Neither Client",
                 sales_manager_id=manager_user.id,
             )
 
-    def test_update_inquiry_switch_text_to_file(self, manager_user, sample_file):
-        """Test switching from text to file."""
+    def test_update_inquiry_add_file_to_text(self, manager_user, sample_file):
+        """Test adding file to existing text inquiry."""
         # Create inquiry with text
         inquiry = InquiryServices.create_inquiry(
             client="Switch Client",
@@ -116,19 +120,19 @@ class TestInquiryFileUpload:
         assert inquiry.text == "Original text"
         assert not inquiry.attachment
 
-        # Switch to file
+        # Add file to existing text
         updated_inquiry = InquiryServices.update_inquiry(
             inquiry=inquiry,
             attachment=sample_file,
         )
 
-        assert updated_inquiry.text is None
+        assert updated_inquiry.text == "Original text"  # Text should remain
         assert updated_inquiry.attachment is not None
         assert "test_inquiry" in updated_inquiry.attachment.name
         assert updated_inquiry.attachment.name.endswith(".txt")
 
-    def test_update_inquiry_switch_file_to_text(self, manager_user, sample_file):
-        """Test switching from file to text."""
+    def test_update_inquiry_add_text_to_file(self, manager_user, sample_file):
+        """Test adding text to existing file inquiry."""
         # Create inquiry with file
         inquiry = InquiryServices.create_inquiry(
             client="Switch Client",
@@ -139,14 +143,14 @@ class TestInquiryFileUpload:
         assert inquiry.text is None
         assert inquiry.attachment is not None
 
-        # Switch to text
+        # Add text to existing file
         updated_inquiry = InquiryServices.update_inquiry(
             inquiry=inquiry,
             text="New text content",
         )
 
         assert updated_inquiry.text == "New text content"
-        assert not updated_inquiry.attachment
+        assert updated_inquiry.attachment is not None  # File should remain
 
     def test_file_size_validation(self, manager_user, large_file):
         """Test that large files are rejected."""
@@ -279,8 +283,8 @@ class TestInquiryFileUploadAPI:
         assert response.data["has_attachment"] is False
         assert response.data["attachment_url"] is None
 
-    def test_api_create_inquiry_both_text_and_file_fails(self, authenticated_client, manager_user, sample_file):
-        """Test API validation for both text and file."""
+    def test_api_create_inquiry_both_text_and_file_succeeds(self, authenticated_client, manager_user, sample_file):
+        """Test API creation with both text and file."""
         url = reverse("inquiries:inquiry-create")
         data = {
             "client": "API Both Client",
@@ -292,11 +296,14 @@ class TestInquiryFileUploadAPI:
 
         response = authenticated_client.post(url, data, format="multipart")
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Cannot provide both text and attachment" in str(response.data)
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["client"] == "API Both Client"
+        assert response.data["text"] == "Text content"
+        assert response.data["has_attachment"] is True
+        assert "api_test" in response.data["attachment_name"]
 
-    def test_api_update_inquiry_switch_to_file(self, authenticated_client, manager_user, sample_file):
-        """Test switching from text to file via API."""
+    def test_api_update_inquiry_add_file_to_text(self, authenticated_client, manager_user, sample_file):
+        """Test adding file to text inquiry via API."""
         # Create text inquiry
         inquiry = InquiryServices.create_inquiry(
             client="API Switch Client",
@@ -304,7 +311,7 @@ class TestInquiryFileUploadAPI:
             sales_manager_id=manager_user.id,
         )
 
-        # Update to file
+        # Add file to existing text
         url = reverse("inquiries:inquiry-update", kwargs={"inquiry_id": inquiry.id})
         data = {
             "attachment": sample_file,
@@ -313,7 +320,7 @@ class TestInquiryFileUploadAPI:
         response = authenticated_client.put(url, data, format="multipart")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["text"] is None
+        assert response.data["text"] == "Original text"  # Text should remain
         assert response.data["has_attachment"] is True
         assert "api_test" in response.data["attachment_name"]
         assert response.data["attachment_name"].endswith(".txt")
@@ -348,3 +355,21 @@ class TestInquiryFileUploadAPI:
         file_inquiry = next(item for item in results if item["client"] == "List File Client")
         assert file_inquiry["has_attachment"] is True
         assert file_inquiry["attachment_url"] is not None
+
+    def test_update_inquiry_remove_both_content_fails(self, manager_user, sample_file):
+        """Test that removing both text and attachment fails."""
+        # Create inquiry with both text and file
+        inquiry = InquiryServices.create_inquiry(
+            client="Both Content Client",
+            text="Some text",
+            attachment=sample_file,
+            sales_manager_id=manager_user.id,
+        )
+
+        # Try to remove both text and attachment
+        with pytest.raises(ValueError, match="Must provide either text or attachment \\(or both\\)"):
+            InquiryServices.update_inquiry(
+                inquiry=inquiry,
+                text="",  # Empty text
+                attachment=None,  # Remove attachment
+            )

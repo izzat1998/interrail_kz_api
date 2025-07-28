@@ -10,6 +10,7 @@ class InquiryAdmin(admin.ModelAdmin):
         "id",
         "client",
         "colored_status",
+        "attachment_display",
         "sales_manager",
         "is_new_customer",
         "created_at",
@@ -34,7 +35,7 @@ class InquiryAdmin(admin.ModelAdmin):
     ordering = ["-created_at"]
 
     fieldsets = (
-        ("Basic Information", {"fields": ("client", "text", "comment")}),
+        ("Basic Information", {"fields": ("client", "text", "attachment", "comment")}),
         (
             "Status & Assignment",
             {"fields": ("status", "sales_manager", "is_new_customer")},
@@ -59,6 +60,16 @@ class InquiryAdmin(admin.ModelAdmin):
         )
 
     colored_status.short_description = "Status"
+
+    def attachment_display(self, obj):
+        if obj.attachment:
+            return format_html(
+                '<a href="{}" target="_blank">📎 View</a>',
+                obj.attachment.url
+            )
+        return "-"
+
+    attachment_display.short_description = "Attachment"
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("sales_manager")

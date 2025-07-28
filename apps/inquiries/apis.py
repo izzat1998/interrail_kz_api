@@ -18,6 +18,35 @@ from .selectors import InquirySelectors
 from .services import InquiryServices
 
 
+class AttachmentField(serializers.Field):
+    """Custom field that handles both file uploads and string commands"""
+
+    def to_internal_value(self, data):
+        # Handle file uploads (multipart requests)
+        if hasattr(data, 'read'):
+            return data
+
+        # Handle string commands (JSON requests)
+        if isinstance(data, str):
+            if data == 'DELETE':
+                return None  # Signal for deletion
+            elif data == '':
+                return ...  # Signal for no change (ellipsis)
+            else:
+                raise serializers.ValidationError(
+                    "Invalid value. Use 'DELETE' to remove attachment or upload a file."
+                )
+
+        raise serializers.ValidationError(
+            "Must be a file or 'DELETE' string."
+        )
+
+    def to_representation(self, value):
+        if hasattr(value, 'url'):
+            return value.url
+        return str(value) if value else None
+
+
 class InquiryListApiView(APIView):
     """
     List inquiries
@@ -161,21 +190,7 @@ class InquiryCreateApiView(APIView):
         sales_manager_id = serializers.IntegerField(required=True)
         is_new_customer = serializers.BooleanField(default=False)
 
-        def validate(self, data):
-            """Validate that either text or attachment is provided, but not both or neither."""
-            text = data.get('text', '').strip() if data.get('text') else ''
-            attachment = data.get('attachment')
 
-            has_text = bool(text)
-            has_attachment = bool(attachment)
-
-            if has_text and has_attachment:
-                raise serializers.ValidationError("Cannot provide both text and attachment. Choose one.")
-
-            if not has_text and not has_attachment:
-                raise serializers.ValidationError("Must provide either text or attachment.")
-
-            return data
 
     class InquiryCreateOutputSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
@@ -294,29 +309,39 @@ class InquiryUpdateApiView(APIView):
     class InquiryUpdateSerializer(serializers.Serializer):
         client = serializers.CharField(max_length=255, required=False)
         text = serializers.CharField(required=False, allow_blank=True)
-        attachment = serializers.FileField(required=False, allow_null=True)
+        attachment = AttachmentField(required=False)
         status = serializers.ChoiceField(choices=Inquiry.STATUS_CHOICES, required=False)
         comment = serializers.CharField(required=False, allow_blank=True)
         sales_manager_id = serializers.IntegerField(required=False)
         is_new_customer = serializers.BooleanField(required=False)
 
         def validate(self, data):
-            """Validate content update - if updating content, must provide either text or attachment."""
-            text = data.get('text', '').strip() if data.get('text') else ''
-            attachment = data.get('attachment')
+            # Handle attachment field - can be file upload or string command
+            if 'attachment' in self.initial_data:
+                attachment_value = self.initial_data['attachment']
 
-            # If either text or attachment is provided, validate mutual exclusivity
-            if 'text' in data or 'attachment' in data:
-                has_text = bool(text)
-                has_attachment = bool(attachment)
-
-                if has_text and has_attachment:
-                    raise serializers.ValidationError("Cannot provide both text and attachment. Choose one.")
-
-                if not has_text and not has_attachment:
-                    raise serializers.ValidationError("Must provide either text or attachment when updating content.")
+                # Handle file uploads (multipart requests)
+                if hasattr(attachment_value, 'read'):
+                    data['attachment'] = attachment_value
+                # Handle string commands (JSON requests)
+                elif isinstance(attachment_value, str):
+                    if attachment_value == 'DELETE':
+                        data['attachment'] = None  # Signal for deletion
+                    elif attachment_value == '':
+                        data.pop('attachment', None)  # Remove from data = no change
+                    else:
+                        raise serializers.ValidationError(
+                            {"attachment": "Invalid value. Use 'DELETE' to remove attachment or upload a file."}
+                        )
+                else:
+                    raise serializers.ValidationError(
+                        {"attachment": "Must be a file or 'DELETE' string."}
+                    )
 
             return data
+
+
+
 
     class InquiryUpdateResponseSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
@@ -353,16 +378,21 @@ class InquiryUpdateApiView(APIView):
         try:
             inquiry = InquirySelectors.get_inquiry_instance_by_id(inquiry_id=inquiry_id)
 
-            updated_inquiry = InquiryServices.update_inquiry(
-                inquiry=inquiry,
-                client=serializer.validated_data.get("client"),
-                text=serializer.validated_data.get("text"),
-                attachment=serializer.validated_data.get("attachment"),
-                status=serializer.validated_data.get("status"),
-                comment=serializer.validated_data.get("comment"),
-                sales_manager_id=serializer.validated_data.get("sales_manager_id"),
-                is_new_customer=serializer.validated_data.get("is_new_customer"),
-            )
+            # Prepare update kwargs, only include fields that were provided
+            update_kwargs = {
+                "inquiry": inquiry,
+            }
+
+            # Only include fields that were explicitly provided in the request
+            for field in ["client", "text", "status", "comment", "sales_manager_id", "is_new_customer"]:
+                if field in serializer.validated_data:
+                    update_kwargs[field] = serializer.validated_data[field]
+
+            # Handle attachment separately to distinguish between None and not provided
+            if "attachment" in serializer.validated_data:
+                update_kwargs["attachment"] = serializer.validated_data["attachment"]
+
+            updated_inquiry = InquiryServices.update_inquiry(**update_kwargs)
 
             # Get formatted data directly from updated inquiry
             data = InquirySelectors.get_inquiry_by_id(inquiry_id=updated_inquiry.id)

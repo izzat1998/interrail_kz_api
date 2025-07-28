@@ -1,0 +1,1482 @@
+openapi: 3.0.3
+info:
+  title: Interrail Kazakhstan API
+  version: 1.0.0
+  description: API for Interrail Kazakhstan platform with JWT authentication
+paths:
+  /api/alive/:
+    get:
+      operationId: alive_retrieve
+      description: Check if the API service is alive and running
+      summary: Liveness Check
+      tags:
+      - Health Check
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  alive:
+                    type: boolean
+          description: ''
+  /api/auth/change-password/:
+    post:
+      operationId: auth_change_password_create
+      description: Change current user password
+      summary: Change Password
+      tags:
+      - User Profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            examples:
+              ChangePasswordExample:
+                value:
+                  old_password: current_password123
+                  new_password: new_secure_password456
+                summary: Change Password Example
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                    message: Password changed successfully
+                  summary: Success Response
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/login/:
+    post:
+      operationId: auth_login_create
+      description: Authenticate user with username/password and set JWT tokens as
+        HTTP-only cookies
+      summary: User Login
+      tags:
+      - Authentication
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              LoginExample:
+                value:
+                  username: john_doe
+                  password: secure_password123
+                summary: Login Example
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                  summary: Success Response
+                  description: JWT tokens are set as HTTP-only cookies (access_token,
+                    refresh_token)
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Logout user by blacklisting refresh token from HTTP-only cookies
+        and clearing all auth cookies
+      summary: User Logout
+      tags:
+      - Authentication
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                    message: Logout successful
+                  summary: Success Response
+                  description: Refresh token is blacklisted and all auth cookies are
+                    cleared
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/profile/:
+    get:
+      operationId: auth_profile_retrieve
+      description: Get current authenticated user profile and permissions
+      summary: Get User Profile
+      tags:
+      - User Profile
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                    data:
+                      profile:
+                        id: 1
+                        username: john_doe
+                        email: john@example.com
+                        first_name: John
+                        last_name: Doe
+                        user_type: customer
+                        telegram_id: '123456789'
+                        telegram_username: john_doe_tg
+                        telegram_access: true
+                        is_active: true
+                        date_joined: '2024-01-01T00:00:00Z'
+                        last_login: '2024-01-15T10:30:00Z'
+                      permissions:
+                        can_manage_users: false
+                        can_view_all_users: false
+                        can_access_admin: false
+                        can_manage_routes: false
+                        can_book_tickets: true
+                  summary: Success Response
+          description: ''
+  /api/auth/refresh/:
+    post:
+      operationId: auth_refresh_create
+      description: Refresh JWT tokens using HTTP-only refresh token cookie and set
+        new tokens as cookies
+      summary: Refresh JWT Token
+      tags:
+      - Authentication
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                  summary: Success Response
+                  description: New JWT tokens are set as HTTP-only cookies (access_token,
+                    refresh_token)
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/register/:
+    post:
+      operationId: auth_register_create
+      description: Register a new user account and return JWT tokens
+      summary: User Registration
+      tags:
+      - Authentication
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              RegistrationExample:
+                value:
+                  username: new_user
+                  email: newuser@example.com
+                  password: secure_password123
+                  user_type: customer
+                  telegram_id: '987654321'
+                  telegram_username: new_user_tg
+                summary: Registration Example
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    success: true
+                    message: Registration successful
+                    data:
+                      access_token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+                      refresh_token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+                      user:
+                        id: 2
+                        username: new_user
+                        email: newuser@example.com
+                        user_type: customer
+                  summary: Success Response
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/auth/verify-token/:
+    post:
+      operationId: auth_verify_token_create
+      description: Verify JWT token validity and return user information and token
+        details
+      summary: Verify JWT Token
+      tags:
+      - Authentication
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                SuccessResponse:
+                  value:
+                    user:
+                      id: 1
+                      username: john_doe
+                      email: john@example.com
+                      user_type: customer
+                      telegram_id: '123456789'
+                      telegram_username: john_doe_tg
+                    token_info:
+                      exp: 1640995200
+                      iat: 1640991600
+                      user_id: 1
+                  summary: Success Response
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/health/:
+    get:
+      operationId: health_retrieve
+      description: Check the health status of the API service
+      summary: Health Check
+      tags:
+      - Health Check
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                  version:
+                    type: string
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      redis:
+                        type: string
+          description: ''
+  /api/inquiries/:
+    get:
+      operationId: inquiries_retrieve
+      description: List inquiries
+      summary: List Inquiries
+      parameters:
+      - in: query
+        name: is_new_customer
+        schema:
+          type: boolean
+        description: Filter by new customer status
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: 'Items per page (default: 10, max: 100)'
+      - in: query
+        name: sales_manager_id
+        schema:
+          type: integer
+        description: Filter by sales manager ID
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search in client, text, comment
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by multiple statuses (comma-separated)
+      tags:
+      - Inquiries
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryListOutput'
+          description: ''
+  /api/inquiries/{inquiry_id}/:
+    get:
+      operationId: inquiries_retrieve_2
+      description: Retrieve inquiry detail
+      summary: Get Inquiry Detail
+      parameters:
+      - in: path
+        name: inquiry_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Inquiries
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryDetail'
+          description: ''
+  /api/inquiries/{inquiry_id}/delete/:
+    delete:
+      operationId: inquiries_delete_destroy
+      description: Delete inquiry
+      summary: Delete Inquiry
+      parameters:
+      - in: path
+        name: inquiry_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Inquiries
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSuccess'
+          description: ''
+  /api/inquiries/{inquiry_id}/update/:
+    put:
+      operationId: inquiries_update_update
+      description: Update inquiry
+      summary: Update Inquiry
+      parameters:
+      - in: path
+        name: inquiry_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Inquiries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InquiryUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InquiryUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InquiryUpdateRequest'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryUpdateResponse'
+          description: ''
+  /api/inquiries/create/:
+    post:
+      operationId: inquiries_create_create
+      description: Create inquiry
+      summary: Create Inquiry
+      tags:
+      - Inquiries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InquiryCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InquiryCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InquiryCreateRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryCreateOutput'
+          description: ''
+  /api/inquiries/stats/:
+    get:
+      operationId: inquiries_stats_retrieve
+      description: Get inquiry statistics
+      summary: Get Inquiry Statistics
+      tags:
+      - Inquiries
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InquiryStatsOutput'
+          description: ''
+  /api/ready/:
+    get:
+      operationId: ready_retrieve
+      description: Check if the API service is ready to serve requests
+      summary: Readiness Check
+      tags:
+      - Health Check
+      security:
+      - BearerAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  ready:
+                    type: boolean
+          description: ''
+  /api/users/:
+    get:
+      operationId: users_retrieve
+      description: List users
+      summary: List Users
+      parameters:
+      - in: query
+        name: email
+        schema:
+          type: string
+        description: Filter by email (contains)
+      - in: query
+        name: first_name
+        schema:
+          type: string
+        description: Filter by first name (contains)
+      - in: query
+        name: id
+        schema:
+          type: integer
+        description: Filter by user ID
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+        description: Filter by active status
+      - in: query
+        name: last_name
+        schema:
+          type: string
+        description: Filter by last name (contains)
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: 'Number of items to skip (default: 0)'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search across username, email, names
+      - in: query
+        name: telegram_username
+        schema:
+          type: string
+        description: Filter by telegram username (contains)
+      - in: query
+        name: user_type
+        schema:
+          type: string
+        description: Filter by user type
+      - in: query
+        name: username
+        schema:
+          type: string
+        description: Filter by username (contains)
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListOutput'
+          description: ''
+  /api/users/{user_id}/:
+    get:
+      operationId: users_retrieve_2
+      description: Retrieve user detail
+      summary: Get User Detail
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetailOutput'
+          description: ''
+  /api/users/{user_id}/delete/:
+    delete:
+      operationId: users_delete_destroy
+      description: Delete user
+      summary: Delete User
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSuccess'
+          description: ''
+  /api/users/{user_id}/update/:
+    put:
+      operationId: users_update_update
+      description: Update user
+      summary: Update User
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - User Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserUpdateOutput'
+          description: ''
+  /api/users/create/:
+    post:
+      operationId: users_create_create
+      description: Create user
+      summary: Create User
+      tags:
+      - User Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCreateOutput'
+          description: ''
+  /api/users/search/:
+    get:
+      operationId: users_search_list
+      description: Search users
+      summary: Search Users
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: 'Maximum results (default: 10)'
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Search query
+        required: true
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserSearchOutput'
+          description: ''
+  /api/users/stats/:
+    get:
+      operationId: users_stats_retrieve
+      description: Get user statistics
+      summary: Get User Statistics
+      tags:
+      - User Management
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStatsOutput'
+          description: ''
+components:
+  schemas:
+    ChangePasswordRequest:
+      type: object
+      properties:
+        old_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - new_password
+      - old_password
+    DeleteSuccess:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    InquiryCreateOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        client:
+          type: string
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        status_display:
+          type: string
+          readOnly: true
+        sales_manager:
+          allOf:
+          - $ref: '#/components/schemas/inline_serializer'
+          nullable: true
+        is_new_customer:
+          type: boolean
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - client
+      - comment
+      - created_at
+      - id
+      - is_new_customer
+      - sales_manager
+      - status
+      - status_display
+      - text
+      - updated_at
+    InquiryCreateRequest:
+      type: object
+      properties:
+        client:
+          type: string
+          minLength: 1
+          maxLength: 255
+        text:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        comment:
+          type: string
+        sales_manager_id:
+          type: integer
+        is_new_customer:
+          type: boolean
+          default: false
+      required:
+      - client
+      - sales_manager_id
+      - status
+      - text
+    InquiryDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        client:
+          type: string
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        status_display:
+          type: string
+          readOnly: true
+        sales_manager:
+          allOf:
+          - $ref: '#/components/schemas/inline_serializer'
+          nullable: true
+        is_new_customer:
+          type: boolean
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - client
+      - comment
+      - created_at
+      - id
+      - is_new_customer
+      - sales_manager
+      - status
+      - status_display
+      - text
+      - updated_at
+    InquiryListOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        client:
+          type: string
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        status_display:
+          type: string
+          readOnly: true
+        sales_manager:
+          allOf:
+          - $ref: '#/components/schemas/inline_serializer'
+          nullable: true
+        is_new_customer:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - client
+      - created_at
+      - id
+      - is_new_customer
+      - sales_manager
+      - status
+      - status_display
+      - text
+      - updated_at
+    InquiryStatsOutput:
+      type: object
+      properties:
+        total_inquiries:
+          type: integer
+        pending_count:
+          type: integer
+        quoted_count:
+          type: integer
+        success_count:
+          type: integer
+        failed_count:
+          type: integer
+        new_customers_count:
+          type: integer
+        conversion_rate:
+          type: number
+          format: double
+      required:
+      - conversion_rate
+      - failed_count
+      - new_customers_count
+      - pending_count
+      - quoted_count
+      - success_count
+      - total_inquiries
+    InquiryUpdateRequest:
+      type: object
+      properties:
+        client:
+          type: string
+          minLength: 1
+          maxLength: 255
+        text:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        comment:
+          type: string
+        sales_manager_id:
+          type: integer
+        is_new_customer:
+          type: boolean
+    InquiryUpdateResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        client:
+          type: string
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        status_display:
+          type: string
+          readOnly: true
+        sales_manager:
+          allOf:
+          - $ref: '#/components/schemas/inline_serializer'
+          nullable: true
+        is_new_customer:
+          type: boolean
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - client
+      - comment
+      - created_at
+      - id
+      - is_new_customer
+      - sales_manager
+      - status
+      - status_display
+      - text
+      - updated_at
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - username
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        user_type:
+          allOf:
+          - $ref: '#/components/schemas/UserTypeEnum'
+          default: customer
+        telegram_id:
+          type: string
+          maxLength: 50
+        telegram_username:
+          type: string
+          maxLength: 100
+      required:
+      - email
+      - password
+      - username
+    StatusEnum:
+      enum:
+      - pending
+      - quoted
+      - success
+      - failed
+      type: string
+    UserCreateOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        user_type:
+          type: string
+          readOnly: true
+        user_type_display:
+          type: string
+          readOnly: true
+        telegram_id:
+          type: string
+          readOnly: true
+        telegram_username:
+          type: string
+          readOnly: true
+        telegram_access:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - first_name
+      - id
+      - is_active
+      - last_name
+      - telegram_access
+      - telegram_id
+      - telegram_username
+      - updated_at
+      - user_type
+      - user_type_display
+      - username
+    UserCreateRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        first_name:
+          type: string
+          maxLength: 30
+        last_name:
+          type: string
+          maxLength: 30
+        user_type:
+          allOf:
+          - $ref: '#/components/schemas/UserTypeEnum'
+          default: customer
+        telegram_id:
+          type: string
+          maxLength: 50
+        telegram_username:
+          type: string
+          maxLength: 100
+        telegram_access:
+          type: boolean
+          default: false
+      required:
+      - email
+      - password
+      - username
+    UserDetailOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        user_type:
+          type: string
+          readOnly: true
+        user_type_display:
+          type: string
+          readOnly: true
+        telegram_id:
+          type: string
+          readOnly: true
+        telegram_username:
+          type: string
+          readOnly: true
+        telegram_access:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - first_name
+      - id
+      - last_name
+      - telegram_access
+      - telegram_id
+      - telegram_username
+      - updated_at
+      - user_type
+      - user_type_display
+      - username
+    UserListOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        user_type:
+          type: string
+          readOnly: true
+        user_type_display:
+          type: string
+          readOnly: true
+        telegram_id:
+          type: string
+          readOnly: true
+        telegram_username:
+          type: string
+          readOnly: true
+        telegram_access:
+          type: boolean
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - first_name
+      - id
+      - last_login
+      - last_name
+      - telegram_access
+      - telegram_id
+      - telegram_username
+      - updated_at
+      - user_type
+      - user_type_display
+      - username
+    UserSearchOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        user_type:
+          type: string
+          readOnly: true
+        user_type_display:
+          type: string
+          readOnly: true
+      required:
+      - email
+      - first_name
+      - id
+      - last_name
+      - user_type
+      - user_type_display
+      - username
+    UserStatsOutput:
+      type: object
+      properties:
+        total_users:
+          type: integer
+        active_users:
+          type: integer
+        inactive_users:
+          type: integer
+        user_type_counts:
+          $ref: '#/components/schemas/inline_serializer'
+      required:
+      - active_users
+      - inactive_users
+      - total_users
+      - user_type_counts
+    UserTypeEnum:
+      enum:
+      - customer
+      - manager
+      - admin
+      type: string
+    UserUpdateOutput:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        user_type:
+          type: string
+          readOnly: true
+        user_type_display:
+          type: string
+          readOnly: true
+        telegram_id:
+          type: string
+          readOnly: true
+        telegram_username:
+          type: string
+          readOnly: true
+        telegram_access:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - first_name
+      - id
+      - is_active
+      - last_name
+      - telegram_access
+      - telegram_id
+      - telegram_username
+      - updated_at
+      - user_type
+      - user_type_display
+      - username
+    UserUpdateRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          minLength: 1
+        first_name:
+          type: string
+          maxLength: 30
+        last_name:
+          type: string
+          maxLength: 30
+        user_type:
+          $ref: '#/components/schemas/UserTypeEnum'
+        telegram_id:
+          type: string
+          maxLength: 50
+        telegram_username:
+          type: string
+          maxLength: 100
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        telegram_access:
+          type: boolean
+        is_active:
+          type: boolean
+    inline_serializer:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+      required:
+      - email
+      - id
+      - username

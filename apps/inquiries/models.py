@@ -54,17 +54,14 @@ class Inquiry(TimeStampModel):
         ]
 
     def clean(self):
-        """Validate that either text or attachment is provided, but not both or neither."""
+        """Validate that at least text or attachment is provided."""
         super().clean()
 
         has_text = bool(self.text and self.text.strip())
         has_attachment = bool(self.attachment)
 
-        if has_text and has_attachment:
-            raise ValidationError("Cannot provide both text and attachment. Choose one.")
-
         if not has_text and not has_attachment:
-            raise ValidationError("Must provide either text or attachment.")
+            raise ValidationError("Must provide either text or attachment (or both).")
 
     def save(self, *args, **kwargs):
         """Override save to call clean validation."""
@@ -72,5 +69,14 @@ class Inquiry(TimeStampModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        content_type = "file" if self.attachment else "text"
+        has_text = bool(self.text and self.text.strip())
+        has_attachment = bool(self.attachment)
+
+        if has_text and has_attachment:
+            content_type = "text + file"
+        elif has_attachment:
+            content_type = "file"
+        else:
+            content_type = "text"
+
         return f"Inquiry from {self.client} - {self.status} ({content_type})"

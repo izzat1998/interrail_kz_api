@@ -24,17 +24,14 @@ class InquiryServices:
     ) -> Inquiry:
         """
         Create new inquiry with validation
-        Requires either text OR attachment, but not both or neither
+        Requires at least text or attachment (or both)
         """
-        # Validate text/attachment mutual exclusivity
+        # Validate that at least one content type is provided
         has_text = bool(text and text.strip())
         has_attachment = bool(attachment)
 
-        if has_text and has_attachment:
-            raise ValueError("Cannot provide both text and attachment. Choose one.")
-
         if not has_text and not has_attachment:
-            raise ValueError("Must provide either text or attachment.")
+            raise ValueError("Must provide either text or attachment (or both).")
 
         # Handle sales manager resolution
         sales_manager = None
@@ -75,7 +72,7 @@ class InquiryServices:
         inquiry: Inquiry,
         client: str = None,
         text: str = None,
-        attachment = None,
+        attachment = ...,  # Use Ellipsis to distinguish between None and not provided
         status: str = None,
         comment: str = None,
         sales_manager_id: int = None,
@@ -84,37 +81,33 @@ class InquiryServices:
     ) -> Inquiry:
         """
         Update inquiry with validation
-        Supports switching between text and attachment
+        Supports text, attachment, or both
         """
         update_fields = []
         sales_manager = None
 
-        # Handle content updates (text or attachment)
-        if text is not None or attachment is not None:
-            has_text = bool(text and text.strip())
-            has_attachment = bool(attachment)
+        # Handle content updates (text and/or attachment)
+        content_updated = False
+        if text is not None:
+            inquiry.text = text.strip() if text else None
+            update_fields.append("text")
+            content_updated = True
 
-            if has_text and has_attachment:
-                raise ValueError("Cannot provide both text and attachment. Choose one.")
+        if attachment is not ...:  # Only update if attachment was explicitly provided
+            # Delete old attachment if exists and we're updating it
+            if inquiry.attachment:
+                inquiry.attachment.delete(save=False)
+            inquiry.attachment = attachment
+            update_fields.append("attachment")
+            content_updated = True
+
+        # Validate that at least one content type remains after update
+        if content_updated:
+            has_text = bool(inquiry.text and inquiry.text.strip())
+            has_attachment = bool(inquiry.attachment)
 
             if not has_text and not has_attachment:
-                raise ValueError("Must provide either text or attachment.")
-
-            if has_text:
-                # Switching to text - remove attachment
-                if inquiry.attachment:
-                    inquiry.attachment.delete(save=False)  # Delete file but don't save yet
-                inquiry.text = text.strip()
-                inquiry.attachment = None
-                update_fields.extend(["text", "attachment"])
-
-            elif has_attachment:
-                # Switching to attachment - clear text
-                if inquiry.attachment:
-                    inquiry.attachment.delete(save=False)  # Delete old file
-                inquiry.text = None
-                inquiry.attachment = attachment
-                update_fields.extend(["text", "attachment"])
+                raise ValueError("Must provide either text or attachment (or both).")
 
         # Handle sales manager resolution
         if sales_manager_id is not None:
