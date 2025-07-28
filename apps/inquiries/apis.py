@@ -175,6 +175,7 @@ class InquiryCreateApiView(APIView):
     """
 
     # authentication_classes = [CookieJWTAuthentication]
+
     # permission_classes = [IsManagerOrAdmin]
     parser_classes = [JSONParser, MultiPartParser]
 
