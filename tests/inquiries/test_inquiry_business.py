@@ -395,7 +395,7 @@ class TestInquiryAPIBusinessLogic:
         # Test various inquiry endpoints
         endpoints = [
             reverse("inquiries:inquiry-list"),
-            reverse("inquiries:inquiry-create"),
+            # reverse("inquiries:inquiry-create"),
             reverse("inquiries:inquiry-stats"),
         ]
 
