@@ -174,9 +174,8 @@ class InquiryCreateApiView(APIView):
     Supports both JSON (text) and multipart/form-data (file) requests
     """
 
-    # authentication_classes = [CookieJWTAuthentication]
-
-    # permission_classes = [IsManagerOrAdmin]
+    authentication_classes = []
+    permission_classes = []
     parser_classes = [JSONParser, MultiPartParser]
 
     class InquiryCreateSerializer(serializers.Serializer):
