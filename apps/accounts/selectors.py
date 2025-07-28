@@ -28,6 +28,13 @@ class UserSelectors:
         return User.objects.get(username=username)
 
     @staticmethod
+    def get_user_by_telegram_id(*, telegram_id: str) -> User:
+        """
+        Get user by Telegram ID with error handling
+        """
+        return User.objects.get(telegram_id=telegram_id)
+
+    @staticmethod
     def user_list(*, filters: dict[str, Any] | None = None) -> QuerySet[User]:
         """
         Get users list with filtering using django-filter

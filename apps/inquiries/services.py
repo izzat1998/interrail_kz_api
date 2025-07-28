@@ -39,7 +39,7 @@ class InquiryServices:
             from .selectors import InquirySelectors
 
             try:
-                sales_manager = InquirySelectors.get_sales_manager_by_id(
+                sales_manager = InquirySelectors.get_sales_manager_by_id_or_telegram(
                     manager_id=sales_manager_id
                 )
             except CustomUser.DoesNotExist:
@@ -114,7 +114,7 @@ class InquiryServices:
             from .selectors import InquirySelectors
 
             try:
-                sales_manager = InquirySelectors.get_sales_manager_by_id(
+                sales_manager = InquirySelectors.get_sales_manager_by_id_or_telegram(
                     manager_id=sales_manager_id
                 )
             except CustomUser.DoesNotExist:
