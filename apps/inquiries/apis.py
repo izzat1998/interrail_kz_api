@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from drf_spectacular.openapi import OpenApiParameter, OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
@@ -15,7 +17,7 @@ from apps.core.permissions import IsAdminOnly, IsManagerOrAdmin
 
 from .models import Inquiry
 from .selectors import InquirySelectors
-from .services import InquiryServices
+from .services import InquiryKPIServices, InquiryServices
 
 
 class AttachmentField(serializers.Field):
@@ -473,3 +475,467 @@ class InquiryStatsApiView(APIView):
         return Response(
             self.InquiryStatsOutputSerializer(data).data, status=status.HTTP_200_OK
         )
+
+
+class ManagerKPIApiView(APIView):
+    """
+    Get KPI statistics for a specific manager
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class ManagerKPIOutputSerializer(serializers.Serializer):
+        # Basic counts
+        total_inquiries = serializers.IntegerField()
+        total_pending = serializers.IntegerField()
+        total_quoted = serializers.IntegerField()
+        total_success = serializers.IntegerField()
+        total_failed = serializers.IntegerField()
+        new_customers = serializers.IntegerField()
+        processed_inquiries = serializers.IntegerField()
+        completed_inquiries = serializers.IntegerField()
+
+        # KPI Grade Statistics
+        quote_grade_a = serializers.IntegerField()
+        quote_grade_b = serializers.IntegerField()
+        quote_grade_c = serializers.IntegerField()
+        completion_grade_a = serializers.IntegerField()
+        completion_grade_b = serializers.IntegerField()
+        completion_grade_c = serializers.IntegerField()
+
+        # KPI Points
+        total_quote_points = serializers.IntegerField()
+        total_completion_points = serializers.IntegerField()
+        total_kpi_points = serializers.IntegerField()
+        avg_quote_points = serializers.FloatField()
+        avg_completion_points = serializers.FloatField()
+        avg_total_points = serializers.FloatField()
+
+        # Conversion rates
+        conversion_rate = serializers.FloatField()
+        processing_conversion_rate = serializers.FloatField()
+        lead_generation_rate = serializers.FloatField()
+
+        # Grade percentages
+        quote_grade_a_pct = serializers.FloatField()
+        quote_grade_b_pct = serializers.FloatField()
+        quote_grade_c_pct = serializers.FloatField()
+        completion_grade_a_pct = serializers.FloatField()
+        completion_grade_b_pct = serializers.FloatField()
+        completion_grade_c_pct = serializers.FloatField()
+
+    @extend_schema(
+        tags=["KPI"],
+        summary="Get Manager KPI Statistics",
+        parameters=[
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.DATE,
+                description="Filter from date (YYYY-MM-DD)",
+                required=False
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.DATE,
+                description="Filter to date (YYYY-MM-DD)",
+                required=False
+            ),
+        ],
+        responses={200: ManagerKPIOutputSerializer},
+    )
+    def get(self, request, manager_id):
+        try:
+            # Parse date parameters
+            date_from = None
+            date_to = None
+
+            if request.query_params.get('date_from'):
+                try:
+                    date_from = datetime.strptime(request.query_params['date_from'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_from format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if request.query_params.get('date_to'):
+                try:
+                    date_to = datetime.strptime(request.query_params['date_to'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_to format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Get KPI statistics
+            data = InquirySelectors.get_manager_kpi_statistics(
+                manager_id=manager_id,
+                date_from=date_from,
+                date_to=date_to
+            )
+
+            return Response(
+                self.ManagerKPIOutputSerializer(data).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error retrieving manager KPI statistics: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class DashboardKPIApiView(APIView):
+    """
+    Get overall KPI dashboard data
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class OverallStatsSerializer(serializers.Serializer):
+        total_inquiries = serializers.IntegerField()
+        pending_count = serializers.IntegerField()
+        quoted_count = serializers.IntegerField()
+        success_count = serializers.IntegerField()
+        failed_count = serializers.IntegerField()
+        new_customers_count = serializers.IntegerField()
+
+        # KPI Points Summary
+        total_quote_points = serializers.IntegerField()
+        total_completion_points = serializers.IntegerField()
+
+        # Grade counts
+        quote_a_count = serializers.IntegerField()
+        quote_b_count = serializers.IntegerField()
+        quote_c_count = serializers.IntegerField()
+        completion_a_count = serializers.IntegerField()
+        completion_b_count = serializers.IntegerField()
+        completion_c_count = serializers.IntegerField()
+
+        # Conversion rates
+        conversion_rate = serializers.FloatField()
+        lead_generation_rate = serializers.FloatField()
+
+    class ManagerPerformanceSerializer(serializers.Serializer):
+        sales_manager_id = serializers.IntegerField()
+        sales_manager__username = serializers.CharField()
+        sales_manager__email = serializers.EmailField()
+        manager_total = serializers.IntegerField()
+        manager_success = serializers.IntegerField()
+        manager_quote_points = serializers.IntegerField()
+        manager_completion_points = serializers.IntegerField()
+        manager_conversion_rate = serializers.FloatField()
+        manager_total_points = serializers.IntegerField()
+        manager_avg_points = serializers.FloatField()
+
+    class DashboardKPIOutputSerializer(serializers.Serializer):
+        overall_stats = serializers.DictField()
+        manager_performance = serializers.ListField()
+
+    @extend_schema(
+        tags=["KPI"],
+        summary="Get Dashboard KPI Data",
+        parameters=[
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.DATE,
+                description="Filter from date (YYYY-MM-DD)",
+                required=False
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.DATE,
+                description="Filter to date (YYYY-MM-DD)",
+                required=False
+            ),
+        ],
+        responses={200: DashboardKPIOutputSerializer},
+    )
+    def get(self, request):
+        try:
+            # Parse date parameters
+            date_from = None
+            date_to = None
+
+            if request.query_params.get('date_from'):
+                try:
+                    date_from = datetime.strptime(request.query_params['date_from'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_from format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if request.query_params.get('date_to'):
+                try:
+                    date_to = datetime.strptime(request.query_params['date_to'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_to format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Get dashboard KPI data
+            data = InquirySelectors.get_kpi_dashboard_data(
+                date_from=date_from,
+                date_to=date_to
+            )
+
+            return Response(
+                self.DashboardKPIOutputSerializer(data).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error retrieving dashboard KPI data: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class InquiryQuoteApiView(APIView):
+    """
+    Quote an inquiry (triggers KPI calculation)
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class QuoteInputSerializer(serializers.Serializer):
+        pass  # No input needed - backend uses timezone.now()
+
+    class QuoteOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        status = serializers.CharField()
+        quoted_at = serializers.DateTimeField()
+        quote_time = serializers.DurationField()
+        quote_grade = serializers.CharField()
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["KPI Actions"],
+        summary="Quote Inquiry",
+        description="Mark inquiry as quoted and calculate KPI metrics",
+        request=QuoteInputSerializer,
+        responses={200: QuoteOutputSerializer},
+    )
+    def post(self, request, inquiry_id):
+        try:
+            inquiry = InquirySelectors.get_inquiry_instance_by_id(inquiry_id=inquiry_id)
+
+            serializer = self.QuoteInputSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            quoted_at = serializer.validated_data.get('quoted_at')
+
+            # Quote the inquiry
+            updated_inquiry = InquiryKPIServices.quote_inquiry(
+                inquiry=inquiry,
+                quoted_at=quoted_at
+            )
+
+            return Response({
+                "id": updated_inquiry.id,
+                "status": updated_inquiry.status,
+                "quoted_at": updated_inquiry.quoted_at,
+                "quote_time": updated_inquiry.quote_time,
+                "quote_grade": updated_inquiry.quote_grade,
+                "message": "Inquiry quoted successfully"
+            }, status=status.HTTP_200_OK)
+
+        except Inquiry.DoesNotExist:
+            return Response(
+                {"message": "Inquiry not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class InquirySuccessApiView(APIView):
+    """
+    Mark inquiry as successful (triggers completion KPI)
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class SuccessInputSerializer(serializers.Serializer):
+        pass  # No input needed - backend uses timezone.now()
+
+    class SuccessOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        status = serializers.CharField()
+        success_at = serializers.DateTimeField()
+        resolution_time = serializers.DurationField()
+        completion_grade = serializers.CharField()
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["KPI Actions"],
+        summary="Mark Inquiry as Successful",
+        description="Mark inquiry as successful and calculate completion KPI metrics",
+        request=SuccessInputSerializer,
+        responses={200: SuccessOutputSerializer},
+    )
+    def post(self, request, inquiry_id):
+        try:
+            inquiry = InquirySelectors.get_inquiry_instance_by_id(inquiry_id=inquiry_id)
+
+            serializer = self.SuccessInputSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            success_at = serializer.validated_data.get('success_at')
+
+            # Mark as successful
+            updated_inquiry = InquiryKPIServices.complete_inquiry_success(
+                inquiry=inquiry,
+                success_at=success_at
+            )
+
+            return Response({
+                "id": updated_inquiry.id,
+                "status": updated_inquiry.status,
+                "success_at": updated_inquiry.success_at,
+                "resolution_time": updated_inquiry.resolution_time,
+                "completion_grade": updated_inquiry.completion_grade,
+                "message": "Inquiry marked as successful"
+            }, status=status.HTTP_200_OK)
+
+        except Inquiry.DoesNotExist:
+            return Response(
+                {"message": "Inquiry not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class InquiryFailedApiView(APIView):
+    """
+    Mark inquiry as failed (triggers completion KPI)
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class FailedInputSerializer(serializers.Serializer):
+        pass  # No input needed - backend uses timezone.now()
+
+    class FailedOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        status = serializers.CharField()
+        failed_at = serializers.DateTimeField()
+        resolution_time = serializers.DurationField()
+        completion_grade = serializers.CharField()
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["KPI Actions"],
+        summary="Mark Inquiry as Failed",
+        description="Mark inquiry as failed and calculate completion KPI metrics",
+        request=FailedInputSerializer,
+        responses={200: FailedOutputSerializer},
+    )
+    def post(self, request, inquiry_id):
+        try:
+            inquiry = InquirySelectors.get_inquiry_instance_by_id(inquiry_id=inquiry_id)
+
+            serializer = self.FailedInputSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            failed_at = serializer.validated_data.get('failed_at')
+
+            # Mark as failed
+            updated_inquiry = InquiryKPIServices.complete_inquiry_failed(
+                inquiry=inquiry,
+                failed_at=failed_at
+            )
+
+            return Response({
+                "id": updated_inquiry.id,
+                "status": updated_inquiry.status,
+                "failed_at": updated_inquiry.failed_at,
+                "resolution_time": updated_inquiry.resolution_time,
+                "completion_grade": updated_inquiry.completion_grade,
+                "message": "Inquiry marked as failed"
+            }, status=status.HTTP_200_OK)
+
+        except Inquiry.DoesNotExist:
+            return Response(
+                {"message": "Inquiry not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class InquiryKPILockApiView(APIView):
+    """
+    Lock/unlock KPI recalculation for an inquiry
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class KPILockInputSerializer(serializers.Serializer):
+        lock = serializers.BooleanField(
+            help_text="True to lock KPI, False to unlock"
+        )
+
+    class KPILockOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        is_locked = serializers.BooleanField()
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["KPI Actions"],
+        summary="Lock/Unlock KPI Recalculation",
+        description="Lock or unlock KPI recalculation for an inquiry",
+        request=KPILockInputSerializer,
+        responses={200: KPILockOutputSerializer},
+    )
+    def post(self, request, inquiry_id):
+        try:
+            inquiry = InquirySelectors.get_inquiry_instance_by_id(inquiry_id=inquiry_id)
+
+            serializer = self.KPILockInputSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            lock = serializer.validated_data['lock']
+
+            if lock:
+                updated_inquiry = InquiryKPIServices.lock_inquiry_kpi(inquiry=inquiry)
+                message = "KPI locked successfully"
+            else:
+                updated_inquiry = InquiryKPIServices.unlock_inquiry_kpi(inquiry=inquiry)
+                message = "KPI unlocked successfully"
+
+            return Response({
+                "id": updated_inquiry.id,
+                "is_locked": updated_inquiry.is_locked,
+                "message": message
+            }, status=status.HTTP_200_OK)
+
+        except Inquiry.DoesNotExist:
+            return Response(
+                {"message": "Inquiry not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

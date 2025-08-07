@@ -1,12 +1,20 @@
 from django.urls import path
 
 from .apis import (
+    DashboardKPIApiView,
     InquiryCreateApiView,
     InquiryDeleteApiView,
     InquiryDetailApiView,
+    InquiryFailedApiView,
+    InquiryKPILockApiView,
     InquiryListApiView,
+    # KPI Actions
+    InquiryQuoteApiView,
     InquiryStatsApiView,
+    InquirySuccessApiView,
     InquiryUpdateApiView,
+    # KPI APIs
+    ManagerKPIApiView,
 )
 
 app_name = "inquiries"
@@ -31,6 +39,16 @@ inquiry_patterns = [
     ),
     # Inquiry utility operations
     path("stats/", InquiryStatsApiView.as_view(), name="inquiry-stats"),
+
+    # KPI Statistics APIs
+    path("kpi/manager/<int:manager_id>/", ManagerKPIApiView.as_view(), name="manager-kpi"),
+    path("kpi/dashboard/", DashboardKPIApiView.as_view(), name="dashboard-kpi"),
+
+    # KPI Action APIs
+    path("<int:inquiry_id>/quote/", InquiryQuoteApiView.as_view(), name="inquiry-quote"),
+    path("<int:inquiry_id>/success/", InquirySuccessApiView.as_view(), name="inquiry-success"),
+    path("<int:inquiry_id>/failed/", InquiryFailedApiView.as_view(), name="inquiry-failed"),
+    path("<int:inquiry_id>/kpi-lock/", InquiryKPILockApiView.as_view(), name="inquiry-kpi-lock"),
 ]
 
 urlpatterns = inquiry_patterns

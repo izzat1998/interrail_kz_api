@@ -1,8 +1,14 @@
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import CustomUser
 
 from .models import Inquiry
+from .utils import (
+    calculate_completion_grade,
+    calculate_quote_grade,
+    get_business_hours_between,
+)
 
 
 class InquiryServices:
@@ -166,3 +172,205 @@ class InquiryServices:
             inquiry.attachment.delete(save=False)
 
         inquiry.delete()
+
+
+class InquiryKPIServices:
+    """
+    KPI-specific services for inquiry management
+    Handles automatic KPI calculation and status management
+    """
+
+    @staticmethod
+    def quote_inquiry(*, inquiry: Inquiry, quoted_at: timezone.datetime = None) -> Inquiry:
+        """
+        Mark inquiry as quoted and calculate quote KPI metrics
+
+        Args:
+            inquiry: Inquiry instance to quote
+            quoted_at: Custom quote timestamp (defaults to now)
+
+        Returns:
+            Updated inquiry with quote KPI data
+        """
+        if inquiry.is_locked:
+            raise ValueError("Cannot update locked inquiry")
+
+        if inquiry.status not in ["pending"]:
+            raise ValueError(f"Cannot quote inquiry with status '{inquiry.status}'")
+
+        quote_timestamp = quoted_at or timezone.now()
+
+        with transaction.atomic():
+            # Calculate quote time and grade
+            quote_time = get_business_hours_between(inquiry.created_at, quote_timestamp)
+            quote_grade = calculate_quote_grade(quote_time)
+
+            # Update inquiry
+            inquiry.status = "quoted"
+            inquiry.quoted_at = quote_timestamp
+            inquiry.quote_time = quote_time
+            inquiry.quote_grade = quote_grade
+
+            inquiry.save(update_fields=[
+                'status', 'quoted_at', 'quote_time', 'quote_grade'
+            ])
+
+        return inquiry
+
+    @staticmethod
+    def complete_inquiry_success(*, inquiry: Inquiry, success_at: timezone.datetime = None) -> Inquiry:
+        """
+        Mark inquiry as successful and calculate completion KPI metrics
+
+        Args:
+            inquiry: Inquiry instance to mark as successful
+            success_at: Custom success timestamp (defaults to now)
+
+        Returns:
+            Updated inquiry with completion KPI data
+        """
+        if inquiry.is_locked:
+            raise ValueError("Cannot update locked inquiry")
+
+        if inquiry.status not in ["quoted"]:
+            raise ValueError(f"Cannot mark inquiry as successful with status '{inquiry.status}'")
+
+        if not inquiry.quoted_at:
+            raise ValueError("Cannot mark as successful without quote timestamp")
+
+        success_timestamp = success_at or timezone.now()
+
+        with transaction.atomic():
+            # Calculate resolution time and grade
+            resolution_time = get_business_hours_between(inquiry.quoted_at, success_timestamp)
+            completion_grade = calculate_completion_grade(resolution_time)
+
+            # Update inquiry
+            inquiry.status = "success"
+            inquiry.success_at = success_timestamp
+            inquiry.resolution_time = resolution_time
+            inquiry.completion_grade = completion_grade
+
+            inquiry.save(update_fields=[
+                'status', 'success_at', 'resolution_time', 'completion_grade'
+            ])
+
+        return inquiry
+
+    @staticmethod
+    def complete_inquiry_failed(*, inquiry: Inquiry, failed_at: timezone.datetime = None) -> Inquiry:
+        """
+        Mark inquiry as failed and calculate completion KPI metrics
+
+        Args:
+            inquiry: Inquiry instance to mark as failed
+            failed_at: Custom failed timestamp (defaults to now)
+
+        Returns:
+            Updated inquiry with completion KPI data
+        """
+        if inquiry.is_locked:
+            raise ValueError("Cannot update locked inquiry")
+
+        if inquiry.status not in ["quoted"]:
+            raise ValueError(f"Cannot mark inquiry as failed with status '{inquiry.status}'")
+
+        if not inquiry.quoted_at:
+            raise ValueError("Cannot mark as failed without quote timestamp")
+
+        failed_timestamp = failed_at or timezone.now()
+
+        with transaction.atomic():
+            # Calculate resolution time and grade
+            resolution_time = get_business_hours_between(inquiry.quoted_at, failed_timestamp)
+            completion_grade = calculate_completion_grade(resolution_time)
+
+            # Update inquiry
+            inquiry.status = "failed"
+            inquiry.failed_at = failed_timestamp
+            inquiry.resolution_time = resolution_time
+            inquiry.completion_grade = completion_grade
+
+            inquiry.save(update_fields=[
+                'status', 'failed_at', 'resolution_time', 'completion_grade'
+            ])
+
+        return inquiry
+
+    @staticmethod
+    def recalculate_kpi_metrics(*, inquiry: Inquiry, force: bool = False) -> Inquiry:
+        """
+        Recalculate KPI metrics for an inquiry
+
+        Args:
+            inquiry: Inquiry instance to recalculate
+            force: Force recalculation even if inquiry is locked
+
+        Returns:
+            Updated inquiry with recalculated KPI data
+        """
+        if inquiry.is_locked and not force:
+            raise ValueError("Cannot recalculate metrics for locked inquiry (use force=True to override)")
+
+        if inquiry.auto_completion and not force:
+            return inquiry  # Skip auto-completion inquiries unless forced
+
+        update_fields = []
+
+        with transaction.atomic():
+            # Recalculate quote metrics if quoted
+            if inquiry.quoted_at and inquiry.created_at:
+                quote_time = get_business_hours_between(inquiry.created_at, inquiry.quoted_at)
+                quote_grade = calculate_quote_grade(quote_time)
+
+                if inquiry.quote_time != quote_time:
+                    inquiry.quote_time = quote_time
+                    update_fields.append('quote_time')
+
+                if inquiry.quote_grade != quote_grade:
+                    inquiry.quote_grade = quote_grade
+                    update_fields.append('quote_grade')
+
+            # Recalculate completion metrics if completed
+            completion_timestamp = inquiry.success_at or inquiry.failed_at
+            if completion_timestamp and inquiry.quoted_at:
+                resolution_time = get_business_hours_between(inquiry.quoted_at, completion_timestamp)
+                completion_grade = calculate_completion_grade(resolution_time)
+
+                if inquiry.resolution_time != resolution_time:
+                    inquiry.resolution_time = resolution_time
+                    update_fields.append('resolution_time')
+
+                if inquiry.completion_grade != completion_grade:
+                    inquiry.completion_grade = completion_grade
+                    update_fields.append('completion_grade')
+
+            # Save only if there are changes
+            if update_fields:
+                inquiry.save(update_fields=update_fields)
+
+        return inquiry
+
+    @staticmethod
+    def lock_inquiry_kpi(*, inquiry: Inquiry) -> Inquiry:
+        """Lock inquiry to prevent KPI recalculation"""
+        if not inquiry.is_locked:
+            inquiry.is_locked = True
+            inquiry.save(update_fields=['is_locked'])
+        return inquiry
+
+    @staticmethod
+    def unlock_inquiry_kpi(*, inquiry: Inquiry) -> Inquiry:
+        """Unlock inquiry to allow KPI recalculation"""
+        if inquiry.is_locked:
+            inquiry.is_locked = False
+            inquiry.save(update_fields=['is_locked'])
+        return inquiry
+
+    @staticmethod
+    def set_auto_completion(*, inquiry: Inquiry, auto_completion: bool = True) -> Inquiry:
+        """Set auto-completion flag to skip automatic KPI calculations"""
+        if inquiry.auto_completion != auto_completion:
+            inquiry.auto_completion = auto_completion
+            inquiry.save(update_fields=['auto_completion'])
+        return inquiry
