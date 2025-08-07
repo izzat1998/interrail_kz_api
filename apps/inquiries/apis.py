@@ -620,20 +620,25 @@ class DashboardKPIApiView(APIView):
         lead_generation_rate = serializers.FloatField()
 
     class ManagerPerformanceSerializer(serializers.Serializer):
-        sales_manager_id = serializers.IntegerField()
-        sales_manager__username = serializers.CharField()
-        sales_manager__email = serializers.EmailField()
+        sales_manager = inline_serializer(
+            fields={
+                "id": serializers.IntegerField(),
+                "name": serializers.CharField(),
+                "username": serializers.CharField(),
+                "email": serializers.EmailField(),
+            }
+        )
         manager_total = serializers.IntegerField()
         manager_success = serializers.IntegerField()
-        manager_quote_points = serializers.IntegerField()
-        manager_completion_points = serializers.IntegerField()
+        manager_quote_points = serializers.FloatField()
+        manager_completion_points = serializers.FloatField()
         manager_conversion_rate = serializers.FloatField()
-        manager_total_points = serializers.IntegerField()
+        manager_total_points = serializers.FloatField()
         manager_avg_points = serializers.FloatField()
 
     class DashboardKPIOutputSerializer(serializers.Serializer):
         overall_stats = serializers.DictField()
-        manager_performance = serializers.ListField()
+        managers_performance = serializers.ListField()
 
     @extend_schema(
         tags=["KPI"],

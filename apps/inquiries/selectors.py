@@ -352,7 +352,9 @@ class InquirySelectors:
         ).values(
             'sales_manager_id',
             'sales_manager__username',
-            'sales_manager__email'
+            'sales_manager__email',
+            'sales_manager__first_name',
+            'sales_manager__last_name'
         ).annotate(
             manager_total=Count('id'),
             manager_success=Count(Case(When(status='success', then=1), output_field=IntegerField())),
@@ -378,20 +380,43 @@ class InquirySelectors:
             manager_total__gt=0
         ).order_by('-manager_success')
 
-        # Add conversion rate to manager performance
+        # Add conversion rate to manager performance and format data
+        formatted_performance = []
         for manager in manager_performance:
-            manager['manager_conversion_rate'] = calculate_conversion_percentage(
+            manager_conversion_rate = calculate_conversion_percentage(
                 manager['manager_success'], manager['manager_total']
             )
-            manager['manager_total_points'] = (manager['manager_quote_points'] or 0) + (manager['manager_completion_points'] or 0)
-            manager['manager_avg_points'] = (
-                manager['manager_total_points'] / manager['manager_total']
+            manager_total_points = (manager['manager_quote_points'] or 0) + (manager['manager_completion_points'] or 0)
+            manager_avg_points = (
+                manager_total_points / manager['manager_total']
                 if manager['manager_total'] > 0 else 0.0
             )
 
+            # Format with nested sales_manager object and rounded points
+            first_name = manager.get('sales_manager__first_name', '') or ''
+            last_name = manager.get('sales_manager__last_name', '') or ''
+            full_name = f"{first_name} {last_name}".strip() if (first_name or last_name) else manager['sales_manager__username']
+
+            formatted_manager = {
+                'sales_manager': {
+                    'id': manager['sales_manager_id'],
+                    'name': full_name,
+                    'username': manager['sales_manager__username'],
+                    'email': manager['sales_manager__email'],
+                },
+                'manager_total': manager['manager_total'],
+                'manager_success': manager['manager_success'],
+                'manager_quote_points': round(manager['manager_quote_points'] or 0, 2),
+                'manager_completion_points': round(manager['manager_completion_points'] or 0, 2),
+                'manager_conversion_rate': round(manager_conversion_rate, 2),
+                'manager_total_points': round(manager_total_points, 2),
+                'manager_avg_points': round(manager_avg_points, 2),
+            }
+            formatted_performance.append(formatted_manager)
+
         return {
             'overall_stats': overall_stats,
-            'manager_performance': list(manager_performance[:10])  # Top 10 managers
+            'managers_performance': formatted_performance  # Top 10 managers
         }
 
     @staticmethod
