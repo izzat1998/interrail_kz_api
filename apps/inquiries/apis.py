@@ -631,6 +631,14 @@ class DashboardKPIApiView(APIView):
         manager_total = serializers.IntegerField()
         manager_success = serializers.IntegerField()
 
+        # Детализация по статусам
+        manager_pending = serializers.IntegerField()
+        manager_quoted = serializers.IntegerField()
+        manager_failed = serializers.IntegerField()
+
+        # Количество новых клиентов
+        manager_new_customers = serializers.IntegerField()
+
         # Основные процентные метрики
         quote_performance_percentage = serializers.FloatField()  # Процент эффективности по котировкам (баллы/максимум)
         completion_performance_percentage = serializers.FloatField()  # Процент эффективности по завершению (баллы/максимум)

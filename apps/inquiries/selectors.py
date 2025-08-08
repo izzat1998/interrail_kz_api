@@ -358,6 +358,9 @@ class InquirySelectors:
         ).annotate(
             manager_total=Count('id'),
             manager_success=Count(Case(When(status='success', then=1), output_field=IntegerField())),
+            manager_pending=Count(Case(When(status='pending', then=1), output_field=IntegerField())),
+            manager_quoted=Count(Case(When(status='quoted', then=1), output_field=IntegerField())),
+            manager_failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
 
             # Дополнительные метрики для процентов
             quote_grade_a_count=Count(Case(When(quote_grade='A', then=1), output_field=IntegerField())),
@@ -444,6 +447,10 @@ class InquirySelectors:
                 },
                 'manager_total': manager['manager_total'],
                 'manager_success': manager['manager_success'],
+                'manager_pending': manager['manager_pending'],
+                'manager_quoted': manager['manager_quoted'],
+                'manager_failed': manager['manager_failed'],
+                'manager_new_customers': manager['new_customers_count'],
 
                 # Процентные метрики
                 'quote_performance_percentage': round(quote_performance_percentage, 1),
