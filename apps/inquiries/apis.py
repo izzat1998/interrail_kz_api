@@ -630,9 +630,17 @@ class DashboardKPIApiView(APIView):
         )
         manager_total = serializers.IntegerField()
         manager_success = serializers.IntegerField()
+
+        # Основные процентные метрики
+        quote_performance_percentage = serializers.FloatField()  # Процент эффективности по котировкам (баллы/максимум)
+        completion_performance_percentage = serializers.FloatField()  # Процент эффективности по завершению (баллы/максимум)
+        completion_rate = serializers.FloatField()  # Процент завершенных заявок (success+failed)/total
+        conversion_rate = serializers.FloatField()  # Процент успешной конверсии (success/total)
+        new_customers_percentage = serializers.FloatField()  # Процент новых клиентов
+
+        # KPI баллы (оставляем для детализации)
         manager_quote_points = serializers.FloatField()
         manager_completion_points = serializers.FloatField()
-        manager_conversion_rate = serializers.FloatField()
         manager_total_points = serializers.FloatField()
         manager_avg_points = serializers.FloatField()
 

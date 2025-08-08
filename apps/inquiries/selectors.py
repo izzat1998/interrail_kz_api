@@ -346,7 +346,7 @@ class InquirySelectors:
             overall_stats['conversion_rate'] = 0.0
             overall_stats['lead_generation_rate'] = 0.0
 
-        # Manager performance ranking
+        # Manager performance ranking with additional metrics
         manager_performance = qs.filter(
             sales_manager__isnull=False
         ).values(
@@ -358,6 +358,13 @@ class InquirySelectors:
         ).annotate(
             manager_total=Count('id'),
             manager_success=Count(Case(When(status='success', then=1), output_field=IntegerField())),
+
+            # Дополнительные метрики для процентов
+            quote_grade_a_count=Count(Case(When(quote_grade='A', then=1), output_field=IntegerField())),
+            completed_count=Count(Case(When(status__in=['success', 'failed'], then=1), output_field=IntegerField())),
+            new_customers_count=Count(Case(When(is_new_customer=True, then=1), output_field=IntegerField())),
+
+            # KPI баллы
             manager_quote_points=Sum(
                 Case(
                     When(quote_grade='A', then=Value(3)),
@@ -383,9 +390,40 @@ class InquirySelectors:
         # Add conversion rate to manager performance and format data
         formatted_performance = []
         for manager in manager_performance:
-            manager_conversion_rate = calculate_conversion_percentage(
+            # Расчет процентных метрик на основе максимально возможных баллов
+
+            # 1. Процент эффективности по котировкам (актуальные баллы / максимум)
+            # Максимум = количество заявок × 3 балла (если все Grade A)
+            max_quote_points = manager['manager_total'] * 3
+            quote_performance_percentage = (
+                (manager['manager_quote_points'] / max_quote_points * 100)
+                if max_quote_points > 0 else 0.0
+            )
+
+            # 2. Процент эффективности по завершению (актуальные баллы / максимум)
+            # Максимум = количество завершенных заявок × 3 балла
+            max_completion_points = manager['completed_count'] * 3
+            completion_performance_percentage = (
+                (manager['manager_completion_points'] / max_completion_points * 100)
+                if max_completion_points > 0 else 0.0
+            )
+
+            # 3. Процент завершенных заявок (не застрявших в quoted/pending)
+            completion_rate = calculate_conversion_percentage(
+                manager['completed_count'], manager['manager_total']
+            )
+
+            # 4. Процент конверсии (успешные сделки)
+            conversion_rate = calculate_conversion_percentage(
                 manager['manager_success'], manager['manager_total']
             )
+
+            # 5. Процент новых клиентов
+            new_customers_percentage = calculate_conversion_percentage(
+                manager['new_customers_count'], manager['manager_total']
+            )
+
+            # KPI баллы для детализации
             manager_total_points = (manager['manager_quote_points'] or 0) + (manager['manager_completion_points'] or 0)
             manager_avg_points = (
                 manager_total_points / manager['manager_total']
@@ -406,9 +444,17 @@ class InquirySelectors:
                 },
                 'manager_total': manager['manager_total'],
                 'manager_success': manager['manager_success'],
+
+                # Процентные метрики
+                'quote_performance_percentage': round(quote_performance_percentage, 1),
+                'completion_performance_percentage': round(completion_performance_percentage, 1),
+                'completion_rate': round(completion_rate, 1),
+                'conversion_rate': round(conversion_rate, 1),
+                'new_customers_percentage': round(new_customers_percentage, 1),
+
+                # KPI баллы для детализации
                 'manager_quote_points': round(manager['manager_quote_points'] or 0, 2),
                 'manager_completion_points': round(manager['manager_completion_points'] or 0, 2),
-                'manager_conversion_rate': round(manager_conversion_rate, 2),
                 'manager_total_points': round(manager_total_points, 2),
                 'manager_avg_points': round(manager_avg_points, 2),
             }
