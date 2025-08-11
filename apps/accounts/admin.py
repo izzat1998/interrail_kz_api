@@ -47,7 +47,7 @@ class CustomUserAdmin(admin.ModelAdmin):
         (
             "Telegram Integration",
             {
-                "fields": ("telegram_id", "telegram_username", "telegram_access"),
+                "fields": ("telegram_id", "telegram_username", "telegram_access","phone"),
                 "classes": ("collapse",),
             },
         ),
