@@ -455,7 +455,8 @@ class InquirySelectors:
                 # Процентные метрики
                 'response_time_percentage': round(quote_performance_percentage, 1),
                 'follow_up_percentage': round(completion_performance_percentage, 1),
-                'conversion_rate': round(conversion_rate, 1),
+                'manager_conversion_rate': round(conversion_rate, 1),
+                'conversion_rate': round(conversion_rate, 1),  # Keep for API compatibility
                 'new_customers_percentage': round(new_customers_percentage, 1),
 
                 # KPI баллы для детализации
@@ -469,8 +470,7 @@ class InquirySelectors:
         # Import services to get current weights and calculate weighted scores
         from .services import KPIWeightsServices
 
-        # Restructure to new response format
-        restructured_data = []
+        # Add weighted overall performance calculation to existing format
         for manager_data in formatted_performance:
             # Calculate weighted KPI score using current weights
             weighted_kpi_score = KPIWeightsServices.calculate_weighted_kpi_score(
@@ -480,34 +480,26 @@ class InquirySelectors:
                 new_customer_percentage=manager_data['new_customers_percentage']
             )
 
-            restructured_manager = {
-                "manager": {
-                    "username": manager_data['sales_manager']['username'],
-                    "id": manager_data['sales_manager']['id'],
-                    "first_name": manager_data['sales_manager']['name'].split()[0] if ' ' in manager_data['sales_manager']['name'] else manager_data['sales_manager']['name'],
-                    "last_name": manager_data['sales_manager']['name'].split()[1] if ' ' in manager_data['sales_manager']['name'] else ""
-                },
-                "inquiries": {
-                    "total": manager_data['manager_total'],
-                    "pending": manager_data['manager_pending'],
-                    "quoted": manager_data['manager_quoted'],
-                    "failed": manager_data['manager_failed'],
-                    "success": manager_data['manager_success']
-                },
-                "kpi": {
-                    "response_time": f"{manager_data['response_time_percentage']}",
-                    "follow_up": f"{manager_data['follow_up_percentage']}",
-                    "conversion_rate": f"{manager_data['conversion_rate']}",
-                    "new_customer": f"{manager_data['new_customers_percentage']}",
-                    "overall_performance": f"{weighted_kpi_score}"
-                }
-            }
-            restructured_data.append(restructured_manager)
+            # Add weighted overall performance to the manager data
+            manager_data['overall_performance'] = weighted_kpi_score
 
         # Sort by weighted KPI score for better ranking
-        restructured_data.sort(key=lambda x: float(x['kpi']['overall_performance']), reverse=True)
+        formatted_performance.sort(key=lambda x: x['overall_performance'], reverse=True)
 
-        return restructured_data
+        # Return in the expected format with both overall_stats and managers_performance
+        return {
+            'overall_stats': {
+                'total_inquiries': overall_stats['total_inquiries'],
+                'pending_count': overall_stats['pending_count'],
+                'quoted_count': overall_stats['quoted_count'],
+                'success_count': overall_stats['success_count'],
+                'failed_count': overall_stats['failed_count'],
+                'new_customers_count': overall_stats['new_customers_count'],
+                'conversion_rate': overall_stats['conversion_rate'],
+                'lead_generation_rate': overall_stats['lead_generation_rate'],
+            },
+            'managers_performance': formatted_performance
+        }
 
     @staticmethod
     def get_historical_kpi_trends(

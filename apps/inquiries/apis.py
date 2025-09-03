@@ -676,8 +676,35 @@ class DashboardKPIApiView(APIView):
                 date_to=date_to
             )
 
+            # Convert managers_performance to API format
+            restructured_data = []
+            for manager_data in data['managers_performance']:
+                restructured_manager = {
+                    "manager": {
+                        "username": manager_data['sales_manager']['username'],
+                        "id": manager_data['sales_manager']['id'],
+                        "first_name": manager_data['sales_manager']['name'].split()[0] if ' ' in manager_data['sales_manager']['name'] else manager_data['sales_manager']['name'],
+                        "last_name": manager_data['sales_manager']['name'].split()[1] if ' ' in manager_data['sales_manager']['name'] else ""
+                    },
+                    "inquiries": {
+                        "total": manager_data['manager_total'],
+                        "pending": manager_data['manager_pending'],
+                        "quoted": manager_data['manager_quoted'],
+                        "failed": manager_data['manager_failed'],
+                        "success": manager_data['manager_success']
+                    },
+                    "kpi": {
+                        "response_time": f"{manager_data['response_time_percentage']}",
+                        "follow_up": f"{manager_data['follow_up_percentage']}",
+                        "conversion_rate": f"{manager_data['conversion_rate']}",
+                        "new_customer": f"{manager_data['new_customers_percentage']}",
+                        "overall_performance": f"{manager_data['overall_performance']}"
+                    }
+                }
+                restructured_data.append(restructured_manager)
+
             return Response(
-                data,
+                restructured_data,
                 status=status.HTTP_200_OK
             )
 
