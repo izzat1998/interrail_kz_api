@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Inquiry
+from .models import Inquiry, KPIWeights
 
 
 @admin.register(Inquiry)
@@ -73,3 +73,79 @@ class InquiryAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("sales_manager")
+
+
+@admin.register(KPIWeights)
+class KPIWeightsAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "response_time_weight",
+        "follow_up_weight",
+        "conversion_rate_weight",
+        "new_customer_weight",
+        "total_weight_display",
+        "created_at",
+        "created_by"
+    ]
+    list_filter = [
+        "created_at",
+        "created_by"
+    ]
+    search_fields = [
+        "created_by__username"
+    ]
+    readonly_fields = [
+        "created_at",
+        "updated_at",
+        "total_weight_display"
+    ]
+    list_per_page = 20
+    ordering = ["-created_at"]
+
+    fieldsets = (
+        (
+            "KPI Weights Configuration",
+            {
+                "fields": (
+                    "response_time_weight",
+                    "follow_up_weight",
+                    "conversion_rate_weight",
+                    "new_customer_weight",
+                    "total_weight_display"
+                )
+            }
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_by", "created_at", "updated_at"),
+                "classes": ("collapse",)
+            }
+        ),
+    )
+
+    def total_weight_display(self, obj):
+        total = obj.total_weight
+        color = "green" if abs(total - 100) < 0.01 else "red"
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{:.2f}%</span>',
+            color,
+            total
+        )
+    total_weight_display.short_description = "Total Weight"
+
+
+    def save_model(self, request, obj, form, change):
+        # Set created_by to current user if not already set
+        if not change and not obj.created_by:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("created_by")
+
+    class Media:
+        css = {
+            'all': ('admin/css/custom_admin.css',)
+        }
+        js = ('admin/js/kpi_weights_validation.js',)

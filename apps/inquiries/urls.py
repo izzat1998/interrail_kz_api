@@ -13,6 +13,9 @@ from .apis import (
     InquiryStatsApiView,
     InquirySuccessApiView,
     InquiryUpdateApiView,
+    # KPI Weights APIs
+    KPIWeightsApiView,
+    KPIWeightsUpdateApiView,
     # KPI APIs
     ManagerKPIApiView,
 )
@@ -49,6 +52,10 @@ inquiry_patterns = [
     path("<int:inquiry_id>/success/", InquirySuccessApiView.as_view(), name="inquiry-success"),
     path("<int:inquiry_id>/failed/", InquiryFailedApiView.as_view(), name="inquiry-failed"),
     path("<int:inquiry_id>/kpi-lock/", InquiryKPILockApiView.as_view(), name="inquiry-kpi-lock"),
+
+    # KPI Weights Management APIs
+    path("kpi/weights/", KPIWeightsApiView.as_view(), name="kpi-weights"),
+    path("kpi/weights/update/", KPIWeightsUpdateApiView.as_view(), name="kpi-weights-update"),
 ]
 
 urlpatterns = inquiry_patterns

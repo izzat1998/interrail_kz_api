@@ -372,3 +372,132 @@ def finalize_inquiry_kpi_calculation(sender, instance, created, **kwargs):
             Inquiry.objects.filter(pk=instance.pk).update(**{
                 field: getattr(instance, field) for field in update_fields
             })
+
+
+class KPIWeights(TimeStampModel):
+    """
+    Model to store configurable KPI weights for performance calculations.
+    Only one weights configuration exists and is always active.
+    """
+
+    # KPI Weight Fields (as percentages, should sum to 100)
+    response_time_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        help_text="Weight for response time KPI (quote efficiency). Value in percentage."
+    )
+    follow_up_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        help_text="Weight for follow-up KPI (completion efficiency). Value in percentage."
+    )
+    conversion_rate_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        help_text="Weight for conversion rate KPI (success rate). Value in percentage."
+    )
+    new_customer_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=25.00,
+        help_text="Weight for new customer acquisition KPI. Value in percentage."
+    )
+
+    # Metadata
+    created_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="User who created this configuration"
+    )
+
+    class Meta:
+        verbose_name = "KPI Weights Configuration"
+        verbose_name_plural = "KPI Weights Configurations"
+        ordering = ["-created_at"]
+
+    def clean(self):
+        """Validate that weights are positive and optionally sum to 100"""
+        super().clean()
+
+        weights = [
+            self.response_time_weight,
+            self.follow_up_weight,
+            self.conversion_rate_weight,
+            self.new_customer_weight
+        ]
+
+        # Ensure all weights are positive
+        if any(weight < 0 for weight in weights):
+            raise ValidationError("All weights must be positive values.")
+
+        # Optional: Validate that weights sum to 100%
+        total_weight = sum(weights)
+        if abs(total_weight - 100) > 0.01:  # Allow small floating point differences
+            raise ValidationError(
+                f"Weights must sum to 100%. Current total: {total_weight}%"
+            )
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure only one configuration exists"""
+        self.clean()
+
+        # Delete all existing configurations to maintain single instance
+        if not self.pk:
+            KPIWeights.objects.all().delete()
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"KPI Weights ({self.created_at.strftime('%Y-%m-%d')})"
+
+    @classmethod
+    def get_current_weights(cls):
+        """Get the current KPI weights configuration"""
+        return cls.objects.first()
+
+    @classmethod
+    def get_default_weights(cls):
+        """Get default weights if no active configuration exists"""
+        return {
+            'response_time_weight': 25.00,
+            'follow_up_weight': 25.00,
+            'conversion_rate_weight': 25.00,
+            'new_customer_weight': 25.00
+        }
+
+    @classmethod
+    def get_current_weights_dict(cls):
+        """Get current weights as dictionary, fallback to defaults"""
+        current_weights = cls.get_current_weights()
+        if current_weights:
+            return {
+                'response_time_weight': float(current_weights.response_time_weight),
+                'follow_up_weight': float(current_weights.follow_up_weight),
+                'conversion_rate_weight': float(current_weights.conversion_rate_weight),
+                'new_customer_weight': float(current_weights.new_customer_weight)
+            }
+        return cls.get_default_weights()
+
+    def get_weights_dict(self):
+        """Get this instance's weights as dictionary"""
+        return {
+            'response_time_weight': float(self.response_time_weight),
+            'follow_up_weight': float(self.follow_up_weight),
+            'conversion_rate_weight': float(self.conversion_rate_weight),
+            'new_customer_weight': float(self.new_customer_weight)
+        }
+
+    @property
+    def total_weight(self):
+        """Calculate total weight percentage"""
+        return (
+            self.response_time_weight +
+            self.follow_up_weight +
+            self.conversion_rate_weight +
+            self.new_customer_weight
+        )

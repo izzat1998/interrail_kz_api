@@ -15,9 +15,9 @@ from apps.api_config.utils import inline_serializer
 from apps.authentication.authentication import CookieJWTAuthentication
 from apps.core.permissions import IsAdminOnly, IsManagerOrAdmin
 
-from .models import Inquiry
+from .models import Inquiry, KPIWeights
 from .selectors import InquirySelectors
-from .services import InquiryKPIServices, InquiryServices
+from .services import InquiryKPIServices, InquiryServices, KPIWeightsServices
 
 
 class AttachmentField(serializers.Field):
@@ -595,66 +595,37 @@ class DashboardKPIApiView(APIView):
     authentication_classes = [CookieJWTAuthentication]
     permission_classes = [IsManagerOrAdmin]
 
-    class OverallStatsSerializer(serializers.Serializer):
-        total_inquiries = serializers.IntegerField()
-        pending_count = serializers.IntegerField()
-        quoted_count = serializers.IntegerField()
-        success_count = serializers.IntegerField()
-        failed_count = serializers.IntegerField()
-        new_customers_count = serializers.IntegerField()
+    class ManagerSerializer(serializers.Serializer):
+        username = serializers.CharField()
+        id = serializers.IntegerField()
+        first_name = serializers.CharField()
+        last_name = serializers.CharField()
 
-        # KPI Points Summary
-        total_quote_points = serializers.IntegerField()
-        total_completion_points = serializers.IntegerField()
+    class InquiriesSerializer(serializers.Serializer):
+        total = serializers.IntegerField()
+        pending = serializers.IntegerField()
+        quoted = serializers.IntegerField()
+        failed = serializers.IntegerField()
+        success = serializers.IntegerField()
 
-        # Grade counts
-        quote_a_count = serializers.IntegerField()
-        quote_b_count = serializers.IntegerField()
-        quote_c_count = serializers.IntegerField()
-        completion_a_count = serializers.IntegerField()
-        completion_b_count = serializers.IntegerField()
-        completion_c_count = serializers.IntegerField()
-
-        # Conversion rates
-        conversion_rate = serializers.FloatField()
-        lead_generation_rate = serializers.FloatField()
+    class KPISerializer(serializers.Serializer):
+        response_time = serializers.CharField()
+        follow_up = serializers.CharField()
+        conversion_rate = serializers.CharField()
+        new_customer = serializers.CharField()
+        overall_performance = serializers.CharField()
 
     class ManagerPerformanceSerializer(serializers.Serializer):
-        sales_manager = inline_serializer(
-            fields={
-                "id": serializers.IntegerField(),
-                "name": serializers.CharField(),
-                "username": serializers.CharField(),
-                "email": serializers.EmailField(),
+        def to_representation(self, instance):
+            return {
+                'manager': DashboardKPIApiView.ManagerSerializer(instance.get('manager', {})).data,
+                'inquiries': DashboardKPIApiView.InquiriesSerializer(instance.get('inquiries', {})).data,
+                'kpi': DashboardKPIApiView.KPISerializer(instance.get('kpi', {})).data
             }
-        )
-        manager_total = serializers.IntegerField()
-        manager_success = serializers.IntegerField()
-
-        # Детализация по статусам
-        manager_pending = serializers.IntegerField()
-        manager_quoted = serializers.IntegerField()
-        manager_failed = serializers.IntegerField()
-
-        # Количество новых клиентов
-        manager_new_customers = serializers.IntegerField()
-
-        # Основные процентные метрики
-        quote_performance_percentage = serializers.FloatField()  # Процент эффективности по котировкам (баллы/максимум)
-        completion_performance_percentage = serializers.FloatField()  # Процент эффективности по завершению (баллы/максимум)
-        completion_rate = serializers.FloatField()  # Процент завершенных заявок (success+failed)/total
-        conversion_rate = serializers.FloatField()  # Процент успешной конверсии (success/total)
-        new_customers_percentage = serializers.FloatField()  # Процент новых клиентов
-
-        # KPI баллы (оставляем для детализации)
-        manager_quote_points = serializers.FloatField()
-        manager_completion_points = serializers.FloatField()
-        manager_total_points = serializers.FloatField()
-        manager_avg_points = serializers.FloatField()
 
     class DashboardKPIOutputSerializer(serializers.Serializer):
-        overall_stats = serializers.DictField()
-        managers_performance = serializers.ListField()
+        def to_representation(self, instance):
+            return instance
 
     @extend_schema(
         tags=["KPI"],
@@ -706,7 +677,7 @@ class DashboardKPIApiView(APIView):
             )
 
             return Response(
-                self.DashboardKPIOutputSerializer(data).data,
+                data,
                 status=status.HTTP_200_OK
             )
 
@@ -841,6 +812,8 @@ class InquirySuccessApiView(APIView):
             )
 
 
+
+
 class InquiryFailedApiView(APIView):
     """
     Mark inquiry as failed (triggers completion KPI)
@@ -874,7 +847,7 @@ class InquiryFailedApiView(APIView):
             serializer = self.FailedInputSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            failed_at = serializer.validated_data.get('failed_at')
+            failed_at = serializer.validated_data.get("failed_at")
 
             # Mark as failed
             updated_inquiry = InquiryKPIServices.complete_inquiry_failed(
@@ -935,7 +908,7 @@ class InquiryKPILockApiView(APIView):
             serializer = self.KPILockInputSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            lock = serializer.validated_data['lock']
+            lock = serializer.validated_data["lock"]
 
             if lock:
                 updated_inquiry = InquiryKPIServices.lock_inquiry_kpi(inquiry=inquiry)
@@ -958,5 +931,170 @@ class InquiryKPILockApiView(APIView):
         except ValueError as e:
             return Response(
                 {"message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class KPIWeightsApiView(APIView):
+    """
+    Get current KPI weights configuration
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class KPIWeightsOutputSerializer(serializers.Serializer):
+        response_time_weight = serializers.FloatField()
+        follow_up_weight = serializers.FloatField()
+        conversion_rate_weight = serializers.FloatField()
+        new_customer_weight = serializers.FloatField()
+        total_weight = serializers.FloatField(read_only=True)
+        created_at = serializers.DateTimeField(read_only=True)
+        created_by = inline_serializer(
+            fields={
+                "id": serializers.IntegerField(read_only=True),
+                "username": serializers.CharField(read_only=True),
+                "email": serializers.EmailField(read_only=True),
+            },
+            allow_null=True,
+            read_only=True
+        )
+
+    @extend_schema(
+        tags=["KPI Weights"],
+        summary="Get Current KPI Weights",
+        description="Get the current KPI weights configuration",
+        responses={200: KPIWeightsOutputSerializer},
+    )
+    def get(self, request):
+        weights_instance = KPIWeightsServices.get_current_weights_instance()
+
+        if weights_instance:
+            return Response(
+                self.KPIWeightsOutputSerializer(weights_instance).data,
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Return default weights if no configuration exists
+            default_weights = KPIWeights.get_default_weights()
+            default_response = {
+                **default_weights,
+                "total_weight": 100.0,
+                "created_at": None,
+                "created_by": None
+            }
+            return Response(default_response, status=status.HTTP_200_OK)
+
+
+class KPIWeightsUpdateApiView(APIView):
+    """
+    Update KPI weights configuration (Admin only)
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAdminOnly]
+
+    class KPIWeightsUpdateSerializer(serializers.Serializer):
+        response_time_weight = serializers.DecimalField(
+            max_digits=5,
+            decimal_places=2,
+            min_value=0,
+            help_text="Weight for response time KPI (0-100)"
+        )
+        follow_up_weight = serializers.DecimalField(
+            max_digits=5,
+            decimal_places=2,
+            min_value=0,
+            help_text="Weight for follow-up KPI (0-100)"
+        )
+        conversion_rate_weight = serializers.DecimalField(
+            max_digits=5,
+            decimal_places=2,
+            min_value=0,
+            help_text="Weight for conversion rate KPI (0-100)"
+        )
+        new_customer_weight = serializers.DecimalField(
+            max_digits=5,
+            decimal_places=2,
+            min_value=0,
+            help_text="Weight for new customer KPI (0-100)"
+        )
+
+        def validate(self, data):
+            # Validate that weights sum to 100%
+            total = (
+                data["response_time_weight"] +
+                data["follow_up_weight"] +
+                data["conversion_rate_weight"] +
+                data["new_customer_weight"]
+            )
+
+            if abs(total - 100) > 0.01:  # Allow small floating point differences
+                raise serializers.ValidationError(
+                    f"Weights must sum to 100%. Current total: {total}%"
+                )
+
+            return data
+
+    class KPIWeightsUpdateOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        response_time_weight = serializers.FloatField()
+        follow_up_weight = serializers.FloatField()
+        conversion_rate_weight = serializers.FloatField()
+        new_customer_weight = serializers.FloatField()
+        total_weight = serializers.FloatField()
+        created_at = serializers.DateTimeField()
+        created_by = inline_serializer(
+            fields={
+                "id": serializers.IntegerField(),
+                "username": serializers.CharField(),
+                "email": serializers.EmailField(),
+            },
+            allow_null=True
+        )
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["KPI Weights"],
+        summary="Update KPI Weights",
+        description="Update the KPI weights configuration (replaces existing config)",
+        request=KPIWeightsUpdateSerializer,
+        responses={200: KPIWeightsUpdateOutputSerializer},
+    )
+    def put(self, request):
+        serializer = self.KPIWeightsUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            # Create new weights configuration (replaces existing)
+            weights = KPIWeightsServices.create_weights_configuration(
+                response_time_weight=float(serializer.validated_data["response_time_weight"]),
+                follow_up_weight=float(serializer.validated_data["follow_up_weight"]),
+                conversion_rate_weight=float(serializer.validated_data["conversion_rate_weight"]),
+                new_customer_weight=float(serializer.validated_data["new_customer_weight"]),
+                created_by=request.user
+            )
+
+            response_data = {
+                "id": weights.id,
+                "response_time_weight": float(weights.response_time_weight),
+                "follow_up_weight": float(weights.follow_up_weight),
+                "conversion_rate_weight": float(weights.conversion_rate_weight),
+                "new_customer_weight": float(weights.new_customer_weight),
+                "total_weight": float(weights.total_weight),
+                "created_at": weights.created_at,
+                "created_by": {
+                    "id": weights.created_by.id if weights.created_by else None,
+                    "username": weights.created_by.username if weights.created_by else None,
+                    "email": weights.created_by.email if weights.created_by else None,
+                } if weights.created_by else None,
+                "message": "KPI weights updated successfully"
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error updating KPI weights: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )

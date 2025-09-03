@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from apps.accounts.models import CustomUser
 
-from .models import Inquiry
+from .models import Inquiry, KPIWeights
 from .utils import (
     calculate_completion_grade,
     calculate_quote_grade,
@@ -374,3 +374,163 @@ class InquiryKPIServices:
             inquiry.auto_completion = auto_completion
             inquiry.save(update_fields=['auto_completion'])
         return inquiry
+
+
+class KPIWeightsServices:
+    """
+    Services for managing KPI weights configuration
+    """
+
+    @staticmethod
+    def get_current_weights() -> dict:
+        """
+        Get the currently active KPI weights configuration
+
+        Returns:
+            Dictionary with current weights, fallback to defaults if none active
+        """
+        return KPIWeights.get_current_weights_dict()
+
+    @staticmethod
+    def get_current_weights_instance() -> KPIWeights | None:
+        """
+        Get the current KPIWeights instance
+
+        Returns:
+            Current KPIWeights instance or None if no configuration exists
+        """
+        return KPIWeights.get_current_weights()
+
+    @staticmethod
+    def create_weights_configuration(
+        *,
+        response_time_weight: float,
+        follow_up_weight: float,
+        conversion_rate_weight: float,
+        new_customer_weight: float,
+        created_by: 'CustomUser' = None
+    ) -> KPIWeights:
+        """
+        Create new KPI weights configuration (replaces existing)
+
+        Args:
+            response_time_weight: Weight for response time KPI
+            follow_up_weight: Weight for follow-up KPI
+            conversion_rate_weight: Weight for conversion rate KPI
+            new_customer_weight: Weight for new customer KPI
+            created_by: User creating this configuration
+
+        Returns:
+            Created KPIWeights instance
+
+        Raises:
+            ValueError: If weights are invalid
+        """
+        with transaction.atomic():
+            weights = KPIWeights(
+                response_time_weight=response_time_weight,
+                follow_up_weight=follow_up_weight,
+                conversion_rate_weight=conversion_rate_weight,
+                new_customer_weight=new_customer_weight,
+                created_by=created_by
+            )
+
+            # This will trigger validation and replace existing configuration
+            weights.full_clean()
+            weights.save()
+
+        return weights
+
+    @staticmethod
+    def update_weights_configuration(
+        *,
+        weights_instance: KPIWeights,
+        response_time_weight: float = None,
+        follow_up_weight: float = None,
+        conversion_rate_weight: float = None,
+        new_customer_weight: float = None
+    ) -> KPIWeights:
+        """
+        Update existing KPI weights configuration
+
+        Args:
+            weights_instance: KPIWeights instance to update
+            response_time_weight: New response time weight
+            follow_up_weight: New follow-up weight
+            conversion_rate_weight: New conversion rate weight
+            new_customer_weight: New new customer weight
+
+        Returns:
+            Updated KPIWeights instance
+        """
+        update_fields = []
+
+        if response_time_weight is not None:
+            weights_instance.response_time_weight = response_time_weight
+            update_fields.append('response_time_weight')
+
+        if follow_up_weight is not None:
+            weights_instance.follow_up_weight = follow_up_weight
+            update_fields.append('follow_up_weight')
+
+        if conversion_rate_weight is not None:
+            weights_instance.conversion_rate_weight = conversion_rate_weight
+            update_fields.append('conversion_rate_weight')
+
+        if new_customer_weight is not None:
+            weights_instance.new_customer_weight = new_customer_weight
+            update_fields.append('new_customer_weight')
+
+        if update_fields:
+            with transaction.atomic():
+                # This will trigger validation
+                weights_instance.full_clean()
+                weights_instance.save(update_fields=update_fields)
+
+        return weights_instance
+
+
+    @staticmethod
+    def delete_weights_configuration(*, weights_instance: KPIWeights) -> None:
+        """
+        Delete the weights configuration
+
+        Args:
+            weights_instance: KPIWeights instance to delete
+        """
+        weights_instance.delete()
+
+    @staticmethod
+    def calculate_weighted_kpi_score(
+        *,
+        response_time_percentage: float,
+        follow_up_percentage: float,
+        conversion_rate: float,
+        new_customer_percentage: float,
+        weights: dict = None
+    ) -> float:
+        """
+        Calculate weighted KPI score using current or provided weights
+
+        Args:
+            response_time_percentage: Response time performance (0-100)
+            follow_up_percentage: Follow-up performance (0-100)
+            conversion_rate: Conversion rate (0-100)
+            new_customer_percentage: New customer acquisition rate (0-100)
+            weights: Optional custom weights dict, uses current if not provided
+
+        Returns:
+            Weighted KPI score (0-100)
+        """
+        if weights is None:
+            weights = KPIWeightsServices.get_current_weights()
+
+        # Calculate weighted score
+        weighted_score = (
+            (response_time_percentage * weights['response_time_weight'] / 100) +
+            (follow_up_percentage * weights['follow_up_weight'] / 100) +
+            (conversion_rate * weights['conversion_rate_weight'] / 100) +
+            (new_customer_percentage * weights['new_customer_weight'] / 100)
+        )
+
+        return round(weighted_score, 2)

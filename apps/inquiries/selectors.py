@@ -412,9 +412,9 @@ class InquirySelectors:
             )
 
             # 3. Процент завершенных заявок (не застрявших в quoted/pending)
-            completion_rate = calculate_conversion_percentage(
-                manager['completed_count'], manager['manager_total']
-            )
+            # completion_rate = calculate_conversion_percentage(
+            #     manager['completed_count'], manager['manager_total']
+            # )
 
             # 4. Процент конверсии (успешные сделки)
             conversion_rate = calculate_conversion_percentage(
@@ -453,9 +453,8 @@ class InquirySelectors:
                 'manager_new_customers': manager['new_customers_count'],
 
                 # Процентные метрики
-                'quote_performance_percentage': round(quote_performance_percentage, 1),
-                'completion_performance_percentage': round(completion_performance_percentage, 1),
-                'completion_rate': round(completion_rate, 1),
+                'response_time_percentage': round(quote_performance_percentage, 1),
+                'follow_up_percentage': round(completion_performance_percentage, 1),
                 'conversion_rate': round(conversion_rate, 1),
                 'new_customers_percentage': round(new_customers_percentage, 1),
 
@@ -467,10 +466,48 @@ class InquirySelectors:
             }
             formatted_performance.append(formatted_manager)
 
-        return {
-            'overall_stats': overall_stats,
-            'managers_performance': formatted_performance  # Top 10 managers
-        }
+        # Import services to get current weights and calculate weighted scores
+        from .services import KPIWeightsServices
+
+        # Restructure to new response format
+        restructured_data = []
+        for manager_data in formatted_performance:
+            # Calculate weighted KPI score using current weights
+            weighted_kpi_score = KPIWeightsServices.calculate_weighted_kpi_score(
+                response_time_percentage=manager_data['response_time_percentage'],
+                follow_up_percentage=manager_data['follow_up_percentage'],
+                conversion_rate=manager_data['conversion_rate'],
+                new_customer_percentage=manager_data['new_customers_percentage']
+            )
+
+            restructured_manager = {
+                "manager": {
+                    "username": manager_data['sales_manager']['username'],
+                    "id": manager_data['sales_manager']['id'],
+                    "first_name": manager_data['sales_manager']['name'].split()[0] if ' ' in manager_data['sales_manager']['name'] else manager_data['sales_manager']['name'],
+                    "last_name": manager_data['sales_manager']['name'].split()[1] if ' ' in manager_data['sales_manager']['name'] else ""
+                },
+                "inquiries": {
+                    "total": manager_data['manager_total'],
+                    "pending": manager_data['manager_pending'],
+                    "quoted": manager_data['manager_quoted'],
+                    "failed": manager_data['manager_failed'],
+                    "success": manager_data['manager_success']
+                },
+                "kpi": {
+                    "response_time": f"{manager_data['response_time_percentage']}",
+                    "follow_up": f"{manager_data['follow_up_percentage']}",
+                    "conversion_rate": f"{manager_data['conversion_rate']}",
+                    "new_customer": f"{manager_data['new_customers_percentage']}",
+                    "overall_performance": f"{weighted_kpi_score}"
+                }
+            }
+            restructured_data.append(restructured_manager)
+
+        # Sort by weighted KPI score for better ranking
+        restructured_data.sort(key=lambda x: float(x['kpi']['overall_performance']), reverse=True)
+
+        return restructured_data
 
     @staticmethod
     def get_historical_kpi_trends(
