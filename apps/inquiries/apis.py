@@ -71,7 +71,7 @@ class InquiryListApiView(APIView):
         text = serializers.CharField(required=False)
         comment = serializers.CharField(required=False)
         search = serializers.CharField(required=False)
-        is_new_customer = serializers.CharField(required=False)
+        is_new_customer = serializers.BooleanField(required=False)
         sales_manager_id = serializers.IntegerField(required=False)
 
     class InquiryListOutputSerializer(serializers.ModelSerializer):
@@ -143,15 +143,19 @@ class InquiryListApiView(APIView):
     def get(self, request):
         # Validate filters
         status_list = request.GET.getlist("status[]")
+        is_new_customer = request.GET.get("is_new_customer[]")
 
         # Build data dict for serializer (preserve single values)
         data = {}
         for key, value in request.query_params.items():
-            if key != "status[]":  # Handle status[] separately
+            if key not in ["status[]", "is_new_customer[]"]:  # Handle array parameters separately
                 data[key] = value
 
         if status_list:
             data["status"] = status_list
+
+        if is_new_customer is not None:
+            data["is_new_customer"] = is_new_customer
 
         # Add manager filtering for non-admin users
         if request.user.user_type != 'admin':
