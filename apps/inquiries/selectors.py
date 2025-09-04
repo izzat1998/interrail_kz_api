@@ -100,13 +100,21 @@ class InquirySelectors:
         return InquiryFilter(filters, qs).qs
 
     @staticmethod
-    def get_inquiries_stats() -> dict[str, Any]:
+    def get_inquiries_stats(manager_id: int = None) -> dict[str, Any]:
         """
         Get inquiry statistics using a single database query
+        Optionally filter by manager_id for manager-specific stats
         """
         from django.db.models import Case, Count, IntegerField, When
 
-        stats = Inquiry.objects.aggregate(
+        # Start with base queryset
+        queryset = Inquiry.objects.all()
+
+        # Filter by manager if provided
+        if manager_id is not None:
+            queryset = queryset.filter(sales_manager_id=manager_id)
+
+        stats = queryset.aggregate(
             total_inquiries=Count("id"),
             pending_count=Count(
                 Case(
@@ -275,19 +283,24 @@ class InquirySelectors:
 
     @staticmethod
     def get_kpi_dashboard_data(
-        *, date_from: datetime = None, date_to: datetime = None
+        *, date_from: datetime = None, date_to: datetime = None, manager_id: int = None
     ) -> dict[str, Any]:
         """
-        Get comprehensive KPI dashboard data across all managers
+        Get comprehensive KPI dashboard data across all managers or for a specific manager
 
         Args:
             date_from: Optional start date filter
             date_to: Optional end date filter
+            manager_id: Optional manager ID to filter data for specific manager
 
         Returns:
             Dictionary with dashboard KPI metrics
         """
         qs = Inquiry.objects.all()
+
+        # Filter by manager if provided
+        if manager_id is not None:
+            qs = qs.filter(sales_manager_id=manager_id)
 
         # Apply date filters if provided
         if date_from:

@@ -31,13 +31,21 @@ class InquiryFilter(django_filters.FilterSet):
 
     def filter_search(self, queryset, name, value):
         """
-        Search across multiple fields
+        Search across multiple fields including client, text, comment, status, sales manager info, and attachment names
         """
         if not value:
             return queryset
 
-        return queryset.filter(
+        return queryset.select_related('sales_manager').filter(
             models.Q(client__icontains=value)
             | models.Q(text__icontains=value)
             | models.Q(comment__icontains=value)
+            | models.Q(status__icontains=value)
+            | models.Q(sales_manager__username__icontains=value)
+            | models.Q(sales_manager__email__icontains=value)
+            | models.Q(sales_manager__first_name__icontains=value)
+            | models.Q(sales_manager__last_name__icontains=value)
+            | models.Q(attachment__icontains=value)
+            | models.Q(quote_grade__icontains=value)
+            | models.Q(completion_grade__icontains=value)
         )

@@ -125,7 +125,7 @@ class InquiryListApiView(APIView):
             OpenApiParameter(
                 "search",
                 OpenApiTypes.STR,
-                description="Search in client, text, comment",
+                description="Search across all fields: client, text, comment, status, sales manager info (username, email, first/last name), attachment filenames, and KPI grades",
             ),
             OpenApiParameter(
                 "is_new_customer",
@@ -152,6 +152,10 @@ class InquiryListApiView(APIView):
 
         if status_list:
             data["status"] = status_list
+
+        # Add manager filtering for non-admin users
+        if request.user.user_type != 'admin':
+            data['sales_manager_id'] = request.user.id
 
         filter_serializer = self.FilterSerializer(data=data)
         filter_serializer.is_valid(raise_exception=True)
@@ -467,10 +471,13 @@ class InquiryStatsApiView(APIView):
     @extend_schema(
         tags=["Inquiries"],
         summary="Get Inquiry Statistics",
+        description="Get inquiry statistics filtered by current manager",
         responses={200: InquiryStatsOutputSerializer},
     )
     def get(self, request):
-        data = InquirySelectors.get_inquiries_stats()
+        # Admins see all data, managers see only their own data
+        manager_id = None if request.user.user_type == 'admin' else request.user.id
+        data = InquirySelectors.get_inquiries_stats(manager_id=manager_id)
 
         return Response(
             self.InquiryStatsOutputSerializer(data).data, status=status.HTTP_200_OK
@@ -546,6 +553,13 @@ class ManagerKPIApiView(APIView):
     )
     def get(self, request, manager_id):
         try:
+            # Security check: Managers can only view their own KPI data
+            if request.user.user_type != 'admin' and manager_id != request.user.id:
+                return Response(
+                    {"message": "Access denied"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
             # Parse date parameters
             date_from = None
             date_to = None
@@ -630,6 +644,7 @@ class DashboardKPIApiView(APIView):
     @extend_schema(
         tags=["KPI"],
         summary="Get Dashboard KPI Data",
+        description="Get KPI dashboard data. Admins see all managers' data, managers see only their own data.",
         parameters=[
             OpenApiParameter(
                 "date_from",
@@ -670,10 +685,14 @@ class DashboardKPIApiView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
+            # Admins see all data, managers see only their own data
+            manager_id = None if request.user.user_type == 'admin' else request.user.id
+
             # Get dashboard KPI data
             data = InquirySelectors.get_kpi_dashboard_data(
                 date_from=date_from,
-                date_to=date_to
+                date_to=date_to,
+                manager_id=manager_id
             )
 
             # Convert managers_performance to API format
@@ -1011,6 +1030,128 @@ class KPIWeightsApiView(APIView):
                 "created_by": None
             }
             return Response(default_response, status=status.HTTP_200_OK)
+
+
+class ManagerSelfKPIApiView(APIView):
+    """
+    Get KPI metrics for the current authenticated manager
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class ManagerSelfKPIOutputSerializer(serializers.Serializer):
+        response_time = serializers.FloatField()
+        follow_up = serializers.FloatField()
+        conversion_rate = serializers.FloatField()
+        new_customer = serializers.FloatField()
+        overall_performance = serializers.FloatField()
+
+    @extend_schema(
+        tags=["My KPI"],
+        summary="Get My KPI Performance Metrics",
+        description="Get KPI performance metrics for the current authenticated manager",
+        parameters=[
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.DATE,
+                description="Filter from date (YYYY-MM-DD)",
+                required=False
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.DATE,
+                description="Filter to date (YYYY-MM-DD)",
+                required=False
+            ),
+        ],
+        responses={200: ManagerSelfKPIOutputSerializer},
+    )
+    def get(self, request):
+        try:
+            # Parse date parameters
+            date_from = None
+            date_to = None
+
+            if request.query_params.get('date_from'):
+                try:
+                    date_from = datetime.strptime(request.query_params['date_from'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_from format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if request.query_params.get('date_to'):
+                try:
+                    date_to = datetime.strptime(request.query_params['date_to'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_to format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Get KPI statistics for current manager only
+            current_manager_id = request.user.id
+            manager_stats = InquirySelectors.get_manager_kpi_statistics(
+                manager_id=current_manager_id,
+                date_from=date_from,
+                date_to=date_to
+            )
+
+            # If no inquiries found for this manager, return zeros
+            if not manager_stats or manager_stats['total_inquiries'] == 0:
+                return Response({
+                    "response_time": 0.00,
+                    "follow_up": 0.00,
+                    "conversion_rate": 0.00,
+                    "new_customer": 0.00,
+                    "overall_performance": 0.00
+                }, status=status.HTTP_200_OK)
+
+            # Calculate performance percentages similar to dashboard logic
+            # Response time percentage (quote efficiency)
+            max_quote_points = manager_stats['total_inquiries'] * 3
+            response_time_percentage = (
+                (manager_stats['total_quote_points'] / max_quote_points * 100)
+                if max_quote_points > 0 else 0.0
+            )
+
+            # Follow-up percentage (completion efficiency)
+            max_completion_points = manager_stats['completed_inquiries'] * 3
+            follow_up_percentage = (
+                (manager_stats['total_completion_points'] / max_completion_points * 100)
+                if max_completion_points > 0 else 0.0
+            )
+
+            # Get weighted overall performance
+            from .services import KPIWeightsServices
+            overall_performance = KPIWeightsServices.calculate_weighted_kpi_score(
+                response_time_percentage=response_time_percentage,
+                follow_up_percentage=follow_up_percentage,
+                conversion_rate=manager_stats['conversion_rate'],
+                new_customer_percentage=manager_stats['lead_generation_rate']
+            )
+
+            # Format response to match KPISerializer structure with decimal values
+            response_data = {
+                "response_time": round(response_time_percentage or 0, 2),
+                "follow_up": round(follow_up_percentage or 0, 2),
+                "conversion_rate": round(manager_stats.get('conversion_rate') or 0, 2),
+                "new_customer": round(manager_stats.get('lead_generation_rate') or 0, 2),
+                "overall_performance": round(overall_performance or 0, 2)
+            }
+
+            return Response(
+                self.ManagerSelfKPIOutputSerializer(response_data).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error retrieving KPI metrics: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class KPIWeightsUpdateApiView(APIView):

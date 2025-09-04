@@ -18,6 +18,7 @@ from .apis import (
     KPIWeightsUpdateApiView,
     # KPI APIs
     ManagerKPIApiView,
+    ManagerSelfKPIApiView,
 )
 
 app_name = "inquiries"
@@ -46,6 +47,7 @@ inquiry_patterns = [
     # KPI Statistics APIs
     path("kpi/manager/<int:manager_id>/", ManagerKPIApiView.as_view(), name="manager-kpi"),
     path("kpi/dashboard/", DashboardKPIApiView.as_view(), name="dashboard-kpi"),
+    path("kpi/my-performance/", ManagerSelfKPIApiView.as_view(), name="my-kpi"),
 
     # KPI Action APIs
     path("<int:inquiry_id>/quote/", InquiryQuoteApiView.as_view(), name="inquiry-quote"),
