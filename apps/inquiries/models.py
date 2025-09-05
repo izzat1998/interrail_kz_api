@@ -501,3 +501,230 @@ class KPIWeights(TimeStampModel):
             self.conversion_rate_weight +
             self.new_customer_weight
         )
+
+
+class PerformanceTarget(TimeStampModel):
+    """
+    Volume-based performance targets for managers.
+    Defines performance grade thresholds based on inquiry volume brackets.
+
+    Example:
+    - 0-30 inquiries need 90% overall performance for 'Excellent'
+    - 31-60 inquiries need 85% overall performance for 'Excellent'
+    - 101+ inquiries (no max) need 75% overall performance for 'Excellent'
+    """
+
+    GRADE_CHOICES = (
+        ('excellent', 'Excellent'),
+        ('average', 'Average'),
+    )
+
+    # Volume bracket definition
+    min_inquiries = models.IntegerField(
+        help_text="Minimum inquiries in this bracket (inclusive)"
+    )
+    max_inquiries = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum inquiries in bracket (inclusive). Leave null for unlimited."
+    )
+
+    # Performance threshold (as percentage)
+    excellent_threshold = models.FloatField(
+        help_text="Minimum overall performance percentage for Excellent grade. Below this is considered average performance."
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this target configuration is active"
+    )
+
+    class Meta:
+        verbose_name = "Performance Target"
+        verbose_name_plural = "Performance Targets"
+        ordering = ['min_inquiries']
+        indexes = [
+            models.Index(fields=['is_active']),
+            models.Index(fields=['min_inquiries']),
+        ]
+
+    def clean(self):
+        """Validate target configuration"""
+        super().clean()
+
+        # Validate percentage range
+        if not (0 <= self.excellent_threshold <= 100):
+            raise ValidationError("Excellent threshold must be between 0 and 100")
+
+        # Validate volume bracket
+        if self.max_inquiries is not None and self.max_inquiries < self.min_inquiries:
+            raise ValidationError("max_inquiries must be greater than or equal to min_inquiries")
+
+        # Validate minimum inquiries is not negative
+        if self.min_inquiries < 0:
+            raise ValidationError("min_inquiries cannot be negative")
+
+        # Validate range overlaps with existing targets (excluding self)
+        self._validate_range_overlaps()
+
+    def _validate_range_overlaps(self):
+        """Validate that this target's range doesn't overlap with existing active targets"""
+        # Get all other active targets (excluding self if updating)
+        other_targets = PerformanceTarget.objects.filter(is_active=True)
+        if self.pk:
+            other_targets = other_targets.exclude(pk=self.pk)
+
+        current_min = self.min_inquiries
+        current_max = self.max_inquiries
+
+        for target in other_targets:
+            other_min = target.min_inquiries
+            other_max = target.max_inquiries
+
+            # Check if ranges overlap
+            if self._ranges_overlap(current_min, current_max, other_min, other_max):
+                other_range = target.volume_display
+                current_range = f"{current_min}-{current_max}" if current_max else f"{current_min}+"
+                raise ValidationError(
+                    f"Volume range {current_range} overlaps with existing target range {other_range}. "
+                    "Target ranges cannot overlap."
+                )
+
+    def _ranges_overlap(self, min1, max1, min2, max2):
+        """
+        Check if two ranges overlap
+
+        Args:
+            min1, max1: First range (max1 can be None for unlimited)
+            min2, max2: Second range (max2 can be None for unlimited)
+
+        Returns:
+            bool: True if ranges overlap
+        """
+        # Handle unlimited ranges (max is None)
+        if max1 is None and max2 is None:
+            # Both unlimited - they overlap if either min falls within the other's range
+            return True
+        elif max1 is None:
+            # First range is unlimited - overlaps if min1 <= max2
+            return min1 <= max2 if max2 is not None else True
+        elif max2 is None:
+            # Second range is unlimited - overlaps if min2 <= max1
+            return min2 <= max1
+        else:
+            # Both ranges are limited - standard overlap check
+            return not (max1 < min2 or max2 < min1)
+
+    def save(self, *args, **kwargs):
+        """Override save to call clean validation"""
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def applies_to_volume(self, inquiry_count):
+        """
+        Check if this target configuration applies to given inquiry count
+
+        Args:
+            inquiry_count (int): Number of inquiries for the manager
+
+        Returns:
+            bool: True if this target applies to the given volume
+        """
+        if self.max_inquiries is None:
+            # No upper limit - applies to all counts >= min_inquiries
+            return inquiry_count >= self.min_inquiries
+        else:
+            # Has upper limit - check range
+            return self.min_inquiries <= inquiry_count <= self.max_inquiries
+
+    def get_grade_for_performance(self, performance_percentage):
+        """
+        Determine the grade for given performance percentage
+
+        Args:
+            performance_percentage (float): Overall performance percentage
+
+        Returns:
+            str: Grade ('excellent' or 'average')
+        """
+        if performance_percentage >= self.excellent_threshold:
+            return 'excellent'
+        else:
+            return 'average'
+
+    def __str__(self):
+        if self.max_inquiries is None:
+            volume_range = f"{self.min_inquiries}+ inquiries"
+        else:
+            volume_range = f"{self.min_inquiries}-{self.max_inquiries} inquiries"
+
+        return f"Target: {volume_range} (Excellent: {self.excellent_threshold}%)"
+
+    @property
+    def volume_display(self):
+        """Human-readable volume range"""
+        if self.max_inquiries is None:
+            return f"{self.min_inquiries}+"
+        else:
+            return f"{self.min_inquiries}-{self.max_inquiries}"
+
+    @classmethod
+    def get_target_for_volume(cls, inquiry_count):
+        """
+        Get the applicable target configuration for given inquiry volume
+
+        Args:
+            inquiry_count (int): Number of inquiries
+
+        Returns:
+            PerformanceTarget or None: Matching active target configuration
+        """
+        targets = cls.objects.filter(is_active=True).order_by('min_inquiries')
+
+        for target in targets:
+            if target.applies_to_volume(inquiry_count):
+                return target
+
+        return None
+
+    @classmethod
+    def create_default_targets(cls):
+        """
+        Create default target configurations
+        Only creates if no targets exist
+
+        Returns:
+            list: Created target instances
+        """
+        if cls.objects.exists():
+            return []
+
+        default_configs = [
+            {
+                'min_inquiries': 0,
+                'max_inquiries': 30,
+                'excellent_threshold': 90.0,
+            },
+            {
+                'min_inquiries': 31,
+                'max_inquiries': 60,
+                'excellent_threshold': 85.0,
+            },
+            {
+                'min_inquiries': 61,
+                'max_inquiries': 100,
+                'excellent_threshold': 80.0,
+            },
+            {
+                'min_inquiries': 101,
+                'max_inquiries': None,  # Unlimited
+                'excellent_threshold': 75.0,
+            },
+        ]
+
+        created_targets = []
+        for config in default_configs:
+            target = cls.objects.create(**config)
+            created_targets.append(target)
+
+        return created_targets

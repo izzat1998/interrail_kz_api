@@ -16,7 +16,7 @@ from django.utils import timezone
 from apps.accounts.models import CustomUser
 
 from .filters import InquiryFilter
-from .models import Inquiry
+from .models import Inquiry, PerformanceTarget
 from .utils import calculate_conversion_percentage
 
 
@@ -155,6 +155,33 @@ class InquirySelectors:
         )
 
         return stats
+
+    @staticmethod
+    def get_manager_inquiry_count(
+        *,
+        manager_id: int,
+        date_from: datetime = None,
+        date_to: datetime = None
+    ) -> int:
+        """
+        Get count of inquiries for a manager in a specific period
+
+        Args:
+            manager_id: Manager's user ID
+            date_from: Start date (optional)
+            date_to: End date (optional)
+
+        Returns:
+            int: Number of inquiries assigned to the manager
+        """
+        queryset = Inquiry.objects.filter(sales_manager_id=manager_id)
+
+        if date_from:
+            queryset = queryset.filter(created_at__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__lte=date_to)
+
+        return queryset.count()
 
     @staticmethod
     def get_manager_kpi_statistics(
@@ -765,4 +792,222 @@ class InquirySelectors:
                 'min_inquiries': min_inquiries,
                 'total_managers': len(enhanced_stats)
             }
+        }
+
+
+class PerformanceTargetSelectors:
+    """
+    Selectors for performance target-related data retrieval
+    """
+
+    @staticmethod
+    def get_all_targets(*, include_inactive: bool = False) -> QuerySet[PerformanceTarget]:
+        """
+        Get all performance target configurations
+
+        Args:
+            include_inactive: Whether to include inactive targets
+
+        Returns:
+            QuerySet of PerformanceTarget instances
+        """
+        queryset = PerformanceTarget.objects.all().order_by('min_inquiries')
+
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+
+        return queryset
+
+    @staticmethod
+    def get_target_by_id(*, target_id: int) -> PerformanceTarget:
+        """
+        Get target configuration by ID
+
+        Args:
+            target_id: Target ID
+
+        Returns:
+            PerformanceTarget instance
+
+        Raises:
+            PerformanceTarget.DoesNotExist: If target not found
+        """
+        return PerformanceTarget.objects.get(id=target_id)
+
+    @staticmethod
+    def get_target_for_volume(*, inquiry_count: int) -> PerformanceTarget:
+        """
+        Get applicable target configuration for inquiry volume
+
+        Args:
+            inquiry_count: Number of inquiries
+
+        Returns:
+            PerformanceTarget instance or None if no match
+        """
+        return PerformanceTarget.get_target_for_volume(inquiry_count)
+
+    @staticmethod
+    def get_targets_list() -> list[dict]:
+        """
+        Get formatted list of all active targets for API responses
+
+        Returns:
+            List of target dictionaries with formatted data
+        """
+        targets = PerformanceTargetSelectors.get_all_targets(include_inactive=False)
+
+        target_list = []
+        for target in targets:
+            target_data = {
+                'id': target.id,
+                'volume_range': target.volume_display,
+                'min_inquiries': target.min_inquiries,
+                'max_inquiries': target.max_inquiries,
+                'thresholds': {
+                    'excellent': target.excellent_threshold,
+                    'good': target.good_threshold,
+                    'average': target.average_threshold,
+                },
+                'is_active': target.is_active,
+                'created_at': target.created_at,
+                'updated_at': target.updated_at,
+            }
+            target_list.append(target_data)
+
+        return target_list
+
+    @staticmethod
+    def get_target_details(*, target_id: int) -> dict:
+        """
+        Get detailed information about a specific target
+
+        Args:
+            target_id: Target ID
+
+        Returns:
+            Dictionary with complete target information
+
+        Raises:
+            PerformanceTarget.DoesNotExist: If target not found
+        """
+        target = PerformanceTargetSelectors.get_target_by_id(target_id=target_id)
+
+        return {
+            'id': target.id,
+            'volume_range': target.volume_display,
+            'min_inquiries': target.min_inquiries,
+            'max_inquiries': target.max_inquiries,
+            'thresholds': {
+                'excellent': target.excellent_threshold,
+                'good': target.good_threshold,
+                'average': target.average_threshold,
+            },
+            'is_active': target.is_active,
+            'description': str(target),
+            'created_at': target.created_at,
+            'updated_at': target.updated_at,
+        }
+
+    @staticmethod
+    def validate_target_brackets(*, exclude_target_id: int = None) -> dict:
+        """
+        Validate that target brackets don't have gaps or overlaps
+
+        Args:
+            exclude_target_id: Target ID to exclude from validation (for updates)
+
+        Returns:
+            dict: {
+                'is_valid': bool,
+                'errors': list,
+                'gaps': list,
+                'overlaps': list
+            }
+        """
+        queryset = PerformanceTarget.objects.filter(is_active=True).order_by('min_inquiries')
+
+        if exclude_target_id:
+            queryset = queryset.exclude(id=exclude_target_id)
+
+        targets = list(queryset)
+        errors = []
+        gaps = []
+        overlaps = []
+
+        if not targets:
+            return {
+                'is_valid': True,
+                'errors': errors,
+                'gaps': gaps,
+                'overlaps': overlaps
+            }
+
+        # Check for gaps and overlaps
+        for i in range(len(targets) - 1):
+            current = targets[i]
+            next_target = targets[i + 1]
+
+            # If current has no max (unlimited), there shouldn't be any more targets
+            if current.max_inquiries is None:
+                errors.append(f"Target {current.id} has unlimited range but is followed by other targets")
+                continue
+
+            # Check for gaps
+            if current.max_inquiries + 1 < next_target.min_inquiries:
+                gaps.append({
+                    'after_target': current.id,
+                    'before_target': next_target.id,
+                    'gap_range': f"{current.max_inquiries + 1}-{next_target.min_inquiries - 1}"
+                })
+
+            # Check for overlaps
+            elif current.max_inquiries >= next_target.min_inquiries:
+                overlaps.append({
+                    'target_1': current.id,
+                    'target_2': next_target.id,
+                    'overlap_range': f"{next_target.min_inquiries}-{current.max_inquiries}"
+                })
+
+        # Check if the first target starts at 0
+        if targets and targets[0].min_inquiries > 0:
+            gaps.append({
+                'before_target': targets[0].id,
+                'gap_range': f"0-{targets[0].min_inquiries - 1}"
+            })
+
+        is_valid = len(errors) == 0 and len(gaps) == 0 and len(overlaps) == 0
+
+        return {
+            'is_valid': is_valid,
+            'errors': errors,
+            'gaps': gaps,
+            'overlaps': overlaps
+        }
+
+    @staticmethod
+    def get_targets_summary() -> dict:
+        """
+        Get summary statistics about target configurations
+
+        Returns:
+            Dictionary with target system summary
+        """
+        all_targets = PerformanceTarget.objects.all()
+        active_targets = all_targets.filter(is_active=True)
+
+        validation = PerformanceTargetSelectors.validate_target_brackets()
+
+        return {
+            'total_targets': all_targets.count(),
+            'active_targets': active_targets.count(),
+            'inactive_targets': all_targets.filter(is_active=False).count(),
+            'coverage_validation': validation,
+            'brackets_configured': [
+                {
+                    'range': target.volume_display,
+                    'thresholds': f"E:{target.excellent_threshold}% G:{target.good_threshold}% A:{target.average_threshold}%"
+                }
+                for target in active_targets.order_by('min_inquiries')
+            ]
         }

@@ -18,7 +18,13 @@ from .apis import (
     KPIWeightsUpdateApiView,
     # KPI APIs
     ManagerKPIApiView,
+    # Performance Target APIs
+    ManagerPerformanceGradeApiView,
     ManagerSelfKPIApiView,
+    PerformanceTargetCreateApiView,
+    PerformanceTargetDeleteApiView,
+    PerformanceTargetListApiView,
+    PerformanceTargetUpdateApiView,
 )
 
 app_name = "inquiries"
@@ -58,6 +64,15 @@ inquiry_patterns = [
     # KPI Weights Management APIs
     path("kpi/weights/", KPIWeightsApiView.as_view(), name="kpi-weights"),
     path("kpi/weights/update/", KPIWeightsUpdateApiView.as_view(), name="kpi-weights-update"),
+
+    # Performance Target Management APIs
+    path("targets/", PerformanceTargetListApiView.as_view(), name="targets-list"),
+    path("targets/create/", PerformanceTargetCreateApiView.as_view(), name="targets-create"),
+    path("targets/bulk-update/", PerformanceTargetUpdateApiView.as_view(), name="targets-bulk-update"),
+    path("targets/<int:target_id>/delete/", PerformanceTargetDeleteApiView.as_view(), name="targets-delete"),
+
+    # Performance Grade API
+    path("targets/my-grade/", ManagerPerformanceGradeApiView.as_view(), name="my-performance-grade"),
 ]
 
 urlpatterns = inquiry_patterns

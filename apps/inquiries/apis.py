@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from drf_spectacular.openapi import OpenApiParameter, OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -15,9 +15,14 @@ from apps.api_config.utils import inline_serializer
 from apps.authentication.authentication import CookieJWTAuthentication
 from apps.core.permissions import IsAdminOnly, IsManagerOrAdmin
 
-from .models import Inquiry, KPIWeights
-from .selectors import InquirySelectors
-from .services import InquiryKPIServices, InquiryServices, KPIWeightsServices
+from .models import Inquiry, KPIWeights, PerformanceTarget
+from .selectors import InquirySelectors, PerformanceTargetSelectors
+from .services import (
+    InquiryKPIServices,
+    InquiryServices,
+    KPIWeightsServices,
+    PerformanceTargetServices,
+)
 
 
 class AttachmentField(serializers.Field):
@@ -702,6 +707,13 @@ class DashboardKPIApiView(APIView):
             # Convert managers_performance to API format
             restructured_data = []
             for manager_data in data['managers_performance']:
+                # Get performance grade for this manager
+                manager_grade = PerformanceTargetServices.get_performance_grade(
+                    manager_id=manager_data['sales_manager']['id'],
+                    date_from=date_from,
+                    date_to=date_to
+                )
+                manager_data['performance_grade'] = manager_grade.get('grade', 'unknown')
                 restructured_manager = {
                     "manager": {
                         "username": manager_data['sales_manager']['username'],
@@ -721,7 +733,8 @@ class DashboardKPIApiView(APIView):
                         "follow_up": f"{manager_data['follow_up_percentage']}",
                         "conversion_rate": f"{manager_data['conversion_rate']}",
                         "new_customer": f"{manager_data['new_customers_percentage']}",
-                        "overall_performance": f"{manager_data['overall_performance']}"
+                        "overall_performance": f"{manager_data['overall_performance']}",
+                        "performance_grade": manager_data.get('performance_grade', 'unknown')
                     }
                 }
                 restructured_data.append(restructured_manager)
@@ -1050,6 +1063,9 @@ class ManagerSelfKPIApiView(APIView):
         conversion_rate = serializers.FloatField()
         new_customer = serializers.FloatField()
         overall_performance = serializers.FloatField()
+        performance_grade = serializers.CharField()
+        inquiry_count = serializers.IntegerField()
+        target_bracket = serializers.CharField()
 
     @extend_schema(
         tags=["My KPI"],
@@ -1103,14 +1119,23 @@ class ManagerSelfKPIApiView(APIView):
                 date_to=date_to
             )
 
-            # If no inquiries found for this manager, return zeros
+            # If no inquiries found for this manager, return zeros with grade
             if not manager_stats or manager_stats['total_inquiries'] == 0:
+                grade_data = PerformanceTargetServices.get_performance_grade(
+                    manager_id=current_manager_id,
+                    date_from=date_from,
+                    date_to=date_to
+                )
+
                 return Response({
                     "response_time": 0.00,
                     "follow_up": 0.00,
                     "conversion_rate": 0.00,
                     "new_customer": 0.00,
-                    "overall_performance": 0.00
+                    "overall_performance": 0.00,
+                    "performance_grade": grade_data.get('grade', 'unknown'),
+                    "inquiry_count": grade_data.get('inquiry_count', 0),
+                    "target_bracket": grade_data.get('target_bracket', 'not_configured')
                 }, status=status.HTTP_200_OK)
 
             # Calculate performance percentages similar to dashboard logic
@@ -1137,13 +1162,23 @@ class ManagerSelfKPIApiView(APIView):
                 new_customer_percentage=manager_stats['lead_generation_rate']
             )
 
+            # Get performance grade
+            grade_data = PerformanceTargetServices.get_performance_grade(
+                manager_id=current_manager_id,
+                date_from=date_from,
+                date_to=date_to
+            )
+
             # Format response to match KPISerializer structure with decimal values
             response_data = {
                 "response_time": round(response_time_percentage or 0, 2),
                 "follow_up": round(follow_up_percentage or 0, 2),
                 "conversion_rate": round(manager_stats.get('conversion_rate') or 0, 2),
                 "new_customer": round(manager_stats.get('lead_generation_rate') or 0, 2),
-                "overall_performance": round(overall_performance or 0, 2)
+                "overall_performance": round(overall_performance or 0, 2),
+                "performance_grade": grade_data.get('grade', 'unknown'),
+                "inquiry_count": grade_data.get('inquiry_count', 0),
+                "target_bracket": grade_data.get('target_bracket', 'not_configured')
             }
 
             return Response(
@@ -1268,5 +1303,388 @@ class KPIWeightsUpdateApiView(APIView):
         except Exception as e:
             return Response(
                 {"message": f"Error updating KPI weights: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+# Performance Target Management APIs
+
+class PerformanceTargetListApiView(APIView):
+    """
+    List all performance target configurations
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAdminOnly]
+
+    class TargetListOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField(read_only=True)
+        volume_range = serializers.CharField(read_only=True)
+        min_inquiries = serializers.IntegerField(read_only=True)
+        max_inquiries = serializers.IntegerField(read_only=True, allow_null=True)
+        excellent_threshold = serializers.FloatField()
+        is_active = serializers.BooleanField(read_only=True)
+        created_at = serializers.DateTimeField(read_only=True)
+        updated_at = serializers.DateTimeField(read_only=True)
+
+    @extend_schema(
+        tags=["Performance Targets"],
+        summary="List Performance Targets",
+        description="Get all performance target configurations (Admin only)",
+        parameters=[
+            OpenApiParameter(
+                "include_inactive",
+                OpenApiTypes.BOOL,
+                description="Include inactive targets (default: false)",
+                required=False
+            ),
+        ],
+        responses={200: TargetListOutputSerializer(many=True)},
+    )
+    def get(self, request):
+        include_inactive = request.query_params.get('include_inactive', 'false').lower() == 'true'
+
+        try:
+            targets = PerformanceTargetSelectors.get_all_targets(include_inactive=include_inactive)
+
+            # Format the data
+            targets_data = []
+            for target in targets:
+                target_data = {
+                    'id': target.id,
+                    'volume_range': target.volume_display,
+                    'min_inquiries': target.min_inquiries,
+                    'max_inquiries': target.max_inquiries,
+                    'excellent_threshold': target.excellent_threshold,
+                    'is_active': target.is_active,
+                    'created_at': target.created_at,
+                    'updated_at': target.updated_at,
+                }
+                targets_data.append(target_data)
+
+            return Response(
+                self.TargetListOutputSerializer(targets_data, many=True).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error retrieving targets: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class PerformanceTargetCreateApiView(APIView):
+    """
+    Create a new performance target configuration
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAdminOnly]
+
+    class TargetCreateInputSerializer(serializers.Serializer):
+        min_inquiries = serializers.IntegerField(min_value=0)
+        max_inquiries = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+        excellent_threshold = serializers.FloatField(min_value=0, max_value=100)
+
+        def validate(self, data):
+            # Validate volume range
+            if data.get('max_inquiries') is not None and data['max_inquiries'] < data['min_inquiries']:
+                raise serializers.ValidationError(
+                    "max_inquiries must be greater than or equal to min_inquiries"
+                )
+
+            return data
+
+    class TargetCreateOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField(read_only=True)
+        volume_range = serializers.CharField(read_only=True)
+        min_inquiries = serializers.IntegerField(read_only=True)
+        max_inquiries = serializers.IntegerField(read_only=True, allow_null=True)
+        excellent_threshold = serializers.FloatField()
+        is_active = serializers.BooleanField(read_only=True)
+        created_at = serializers.DateTimeField(read_only=True)
+        message = serializers.CharField(read_only=True)
+
+    @extend_schema(
+        tags=["Performance Targets"],
+        summary="Create Performance Target",
+        description="Create new performance target configuration (Admin only)",
+        request=TargetCreateInputSerializer,
+        responses={201: TargetCreateOutputSerializer},
+    )
+    def post(self, request):
+        serializer = self.TargetCreateInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            target = PerformanceTargetServices.create_target(
+                min_inquiries=serializer.validated_data['min_inquiries'],
+                max_inquiries=serializer.validated_data.get('max_inquiries'),
+                excellent_threshold=serializer.validated_data['excellent_threshold']
+            )
+
+            response_data = {
+                'id': target.id,
+                'volume_range': target.volume_display,
+                'min_inquiries': target.min_inquiries,
+                'max_inquiries': target.max_inquiries,
+                'excellent_threshold': target.excellent_threshold,
+                'is_active': target.is_active,
+                'created_at': target.created_at,
+                'message': 'Performance target created successfully'
+            }
+
+            return Response(
+                self.TargetCreateOutputSerializer(response_data).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error creating target: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class PerformanceTargetUpdateApiView(APIView):
+    """
+    Bulk create/update performance target configurations
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAdminOnly]
+
+    class TargetItemInputSerializer(serializers.Serializer):
+        id = serializers.IntegerField(required=False)
+        min_inquiries = serializers.IntegerField(min_value=0)
+        max_inquiries = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+        excellent_kpi = serializers.FloatField(min_value=0, max_value=100)
+        is_active = serializers.BooleanField(required=False, default=True)
+
+    class TargetBulkInputSerializer(serializers.Serializer):
+        def to_internal_value(self, data):
+            if not isinstance(data, list):
+                raise serializers.ValidationError("Expected a list of targets")
+
+            validated_items = []
+            for i, item in enumerate(data):
+                item_serializer = PerformanceTargetUpdateApiView.TargetItemInputSerializer(data=item)
+                try:
+                    item_serializer.is_valid(raise_exception=True)
+                    validated_items.append(item_serializer.validated_data)
+                except serializers.ValidationError as e:
+                    raise serializers.ValidationError({f"item_{i}": e.detail})
+
+            return validated_items
+
+    class TargetItemOutputSerializer(serializers.Serializer):
+        id = serializers.IntegerField(read_only=True)
+        volume_range = serializers.CharField(read_only=True)
+        min_inquiries = serializers.IntegerField(read_only=True)
+        max_inquiries = serializers.IntegerField(read_only=True, allow_null=True)
+        excellent_threshold = serializers.FloatField()
+        is_active = serializers.BooleanField(read_only=True)
+        updated_at = serializers.DateTimeField(read_only=True)
+
+    class TargetBulkOutputSerializer(serializers.Serializer):
+        targets = serializers.ListField(read_only=True)
+        message = serializers.CharField(read_only=True)
+
+    @extend_schema(
+        tags=["Performance Targets"],
+        summary="Bulk Create/Update Performance Targets",
+        description="Bulk create or update performance target configurations. If 'id' is present, update existing target; otherwise create new one (Admin only)",
+        request=TargetBulkInputSerializer,
+        responses={200: TargetBulkOutputSerializer},
+        examples=[
+            OpenApiExample(
+                'Bulk Create/Update Example',
+                value=[
+                    {
+                        "min_inquiries": 0,
+                        "max_inquiries": 25,
+                        "excellent_kpi": 90
+                    },
+                    {
+                        "id": 1,
+                        "min_inquiries": 26,
+                        "max_inquiries": 50,
+                        "excellent_kpi": 85
+                    }
+                ]
+            )
+        ]
+    )
+    def put(self, request, target_id=None):
+        serializer = self.TargetBulkInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            targets = PerformanceTargetServices.bulk_create_update_targets(
+                targets_data=serializer.validated_data
+            )
+
+            targets_data = []
+            for target in targets:
+                targets_data.append({
+                    'id': target.id,
+                    'volume_range': target.volume_display,
+                    'min_inquiries': target.min_inquiries,
+                    'max_inquiries': target.max_inquiries,
+                    'excellent_threshold': target.excellent_threshold,
+                    'is_active': target.is_active,
+                    'updated_at': target.updated_at,
+                })
+
+            response_data = {
+                'targets': targets_data,
+                'message': f'Successfully processed {len(targets)} performance targets'
+            }
+
+            return Response(
+                self.TargetBulkOutputSerializer(response_data).data,
+                status=status.HTTP_200_OK
+            )
+
+        except PerformanceTarget.DoesNotExist:
+            return Response(
+                {"message": "One or more performance targets not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"message": f"Error processing targets: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class PerformanceTargetDeleteApiView(APIView):
+    """
+    Delete performance target configuration
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsAdminOnly]
+
+    class DeleteSuccessSerializer(serializers.Serializer):
+        message = serializers.CharField()
+
+    @extend_schema(
+        tags=["Performance Targets"],
+        summary="Delete Performance Target",
+        description="Delete performance target configuration (Admin only)",
+        responses={200: DeleteSuccessSerializer},
+    )
+    def delete(self, request, target_id):
+        try:
+            PerformanceTargetServices.delete_target(target_id=target_id)
+
+            return Response(
+                self.DeleteSuccessSerializer(
+                    {"message": "Performance target deleted successfully"}
+                ).data,
+                status=status.HTTP_200_OK,
+            )
+
+        except PerformanceTarget.DoesNotExist:
+            return Response(
+                {"message": "Performance target not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"message": f"Error deleting target: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class ManagerPerformanceGradeApiView(APIView):
+    """
+    Get performance grade for the current manager
+    """
+
+    authentication_classes = [CookieJWTAuthentication]
+    permission_classes = [IsManagerOrAdmin]
+
+    class PerformanceGradeOutputSerializer(serializers.Serializer):
+        grade = serializers.CharField(read_only=True)
+        performance = serializers.FloatField(read_only=True)
+        inquiry_count = serializers.IntegerField(read_only=True)
+        target_bracket = serializers.CharField(read_only=True)
+        thresholds = inline_serializer(
+            fields={
+                "excellent": serializers.FloatField(),
+                "good": serializers.FloatField(),
+                "average": serializers.FloatField(),
+            }
+        )
+
+    @extend_schema(
+        tags=["My Performance"],
+        summary="Get My Performance Grade",
+        description="Get current month's performance grade for authenticated manager",
+        parameters=[
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.DATE,
+                description="Filter from date (YYYY-MM-DD) - defaults to current month start",
+                required=False
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.DATE,
+                description="Filter to date (YYYY-MM-DD) - defaults to current month end",
+                required=False
+            ),
+        ],
+        responses={200: PerformanceGradeOutputSerializer},
+    )
+    def get(self, request):
+        try:
+            # Parse date parameters
+            date_from = None
+            date_to = None
+
+            if request.query_params.get('date_from'):
+                try:
+                    date_from = datetime.strptime(request.query_params['date_from'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_from format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if request.query_params.get('date_to'):
+                try:
+                    date_to = datetime.strptime(request.query_params['date_to'], '%Y-%m-%d')
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid date_to format. Use YYYY-MM-DD"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Get performance grade for current manager
+            grade_data = PerformanceTargetServices.get_performance_grade(
+                manager_id=request.user.id,
+                date_from=date_from,
+                date_to=date_to
+            )
+
+            # Return formatted response
+            return Response(
+                self.PerformanceGradeOutputSerializer({
+                    'grade': grade_data['grade'],
+                    'performance': grade_data['performance'],
+                    'inquiry_count': grade_data['inquiry_count'],
+                    'target_bracket': grade_data['target_bracket'],
+                    'thresholds': grade_data['thresholds']
+                }).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {"message": f"Error retrieving performance grade: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
