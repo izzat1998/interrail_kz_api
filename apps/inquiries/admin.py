@@ -128,9 +128,9 @@ class KPIWeightsAdmin(admin.ModelAdmin):
         total = obj.total_weight
         color = "green" if abs(total - 100) < 0.01 else "red"
         return format_html(
-            '<span style="color: {}; font-weight: bold;">{:.2f}%</span>',
+            '<span style="color: {}; font-weight: bold;">{}%</span>',
             color,
-            total
+            f"{total:.2f}"
         )
     total_weight_display.short_description = "Total Weight"
 
