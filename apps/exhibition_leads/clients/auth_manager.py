@@ -22,7 +22,7 @@ class MunichAuthManager:
 
     def __init__(self):
         self.base_url = settings.MUNICH_API_BASE_URL.rstrip("/")
-        self.username = settings.MUNICH_API_USERNAME
+        self.email = settings.MUNICH_API_USERNAME  # Munich API uses email for login
         self.password = settings.MUNICH_API_PASSWORD
         self.timeout = settings.MUNICH_API_TIMEOUT
 
@@ -51,7 +51,7 @@ class MunichAuthManager:
         try:
             response = requests.post(
                 url,
-                json={"username": self.username, "password": self.password},
+                json={"email": self.email, "password": self.password},
                 timeout=self.timeout,
             )
 
