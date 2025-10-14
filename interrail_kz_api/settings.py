@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.authentication",
     "apps.inquiries",
+    "apps.exhibition_leads",
 ]
 
 
@@ -319,3 +320,9 @@ LOGGING = {
         },
     },
 }
+
+# Munich Exhibition API Settings
+MUNICH_API_BASE_URL = env("MUNICH_API_BASE_URL")
+MUNICH_API_USERNAME = env("MUNICH_API_USERNAME")
+MUNICH_API_PASSWORD = env("MUNICH_API_PASSWORD")
+MUNICH_API_TIMEOUT = env.int("MUNICH_API_TIMEOUT", default=30)
