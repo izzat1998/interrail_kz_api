@@ -55,7 +55,8 @@ class MunichExhibitionClient:
         Get list of leads from Munich API
 
         Args:
-            params: Query parameters (search, category_id, importance, page, page_size)
+            params: Query parameters (search, category_id, importance, company_type, mode_of_transport, page, page_size)
+                   - Supports multiple values for: category_id, importance, company_type, mode_of_transport
 
         Returns:
             Dict with 'count', 'next', 'previous', 'results'

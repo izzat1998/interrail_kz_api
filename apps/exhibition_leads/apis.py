@@ -87,12 +87,30 @@ class ExhibitionLeadListAPI(APIView):
             OpenApiParameter(
                 name="category_id",
                 type=OpenApiTypes.INT,
-                description="Filter by category",
+                description="Filter by category (supports multiple values)",
+                explode=True,
+                style="form",
             ),
             OpenApiParameter(
                 name="importance",
                 type=OpenApiTypes.STR,
-                description="Filter by importance",
+                description="Filter by importance: low, medium, high (supports multiple values)",
+                explode=True,
+                style="form",
+            ),
+            OpenApiParameter(
+                name="company_type",
+                type=OpenApiTypes.STR,
+                description="Filter by company type: importer_exporter, forwarder, agent (supports multiple values)",
+                explode=True,
+                style="form",
+            ),
+            OpenApiParameter(
+                name="mode_of_transport",
+                type=OpenApiTypes.STR,
+                description="Filter by mode of transport: wagons, containers, lcl, air, auto (supports multiple values)",
+                explode=True,
+                style="form",
             ),
             OpenApiParameter(
                 name="page", type=OpenApiTypes.INT, description="Page number"
@@ -107,7 +125,18 @@ class ExhibitionLeadListAPI(APIView):
         """List leads from Munich Exhibition API"""
         try:
             client = MunichExhibitionClient()
-            params = request.query_params.dict()
+
+            # Build params dict with support for multiple values
+            params = {}
+            multi_value_params = ['category_id', 'importance', 'company_type', 'mode_of_transport']
+
+            for key in request.query_params.keys():
+                values = request.query_params.getlist(key)
+                # If multiple values or if it's a multi-value param, keep as list
+                if len(values) > 1 or key in multi_value_params:
+                    params[key] = values if len(values) > 1 else values[0]
+                else:
+                    params[key] = values[0]
 
             leads_data = client.list_leads(params)
 
