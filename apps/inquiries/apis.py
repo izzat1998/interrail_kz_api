@@ -78,6 +78,8 @@ class InquiryListApiView(APIView):
         search = serializers.CharField(required=False)
         is_new_customer = serializers.BooleanField(required=False)
         sales_manager_id = serializers.IntegerField(required=False)
+        year = serializers.IntegerField(required=False, min_value=1900, max_value=9999)
+        month = serializers.IntegerField(required=False, min_value=1, max_value=12)
 
     class InquiryListOutputSerializer(serializers.ModelSerializer):
         attachment_url = serializers.SerializerMethodField()
@@ -141,6 +143,16 @@ class InquiryListApiView(APIView):
                 "sales_manager_id",
                 OpenApiTypes.INT,
                 description="Filter by sales manager ID",
+            ),
+            OpenApiParameter(
+                "year",
+                OpenApiTypes.INT,
+                description="Filter by year (e.g., 2024)",
+            ),
+            OpenApiParameter(
+                "month",
+                OpenApiTypes.INT,
+                description="Filter by month (1-12)",
             ),
         ],
         responses={200: InquiryListOutputSerializer},

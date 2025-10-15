@@ -13,6 +13,10 @@ class InquiryFilter(django_filters.FilterSet):
     is_new_customer = django_filters.BooleanFilter()
     sales_manager_id = django_filters.NumberFilter()
 
+    # Date filters
+    year = django_filters.NumberFilter(field_name='created_at', lookup_expr='year')
+    month = django_filters.NumberFilter(field_name='created_at', lookup_expr='month')
+
     # Search across multiple fields
     search = django_filters.CharFilter(method="filter_search")
 
@@ -26,6 +30,8 @@ class InquiryFilter(django_filters.FilterSet):
             "status",
             "is_new_customer",
             "sales_manager",
+            "year",
+            "month",
             "search",
         ]
 
