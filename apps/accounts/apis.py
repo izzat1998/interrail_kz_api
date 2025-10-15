@@ -42,6 +42,7 @@ class UserListApiView(APIView):
         is_active = serializers.CharField(required=False)
         telegram_username = serializers.CharField(required=False)
         search = serializers.CharField(required=False)
+        inquiry_related = serializers.BooleanField(required=False)
 
     class UserListOutputSerializer(serializers.Serializer):
         id = serializers.IntegerField(read_only=True)
@@ -104,6 +105,11 @@ class UserListApiView(APIView):
                 "search",
                 OpenApiTypes.STR,
                 description="Search across username, email, names",
+            ),
+            OpenApiParameter(
+                "inquiry_related",
+                OpenApiTypes.BOOL,
+                description="Filter managers who have created inquiries",
             ),
         ],
         responses={200: UserListOutputSerializer},

@@ -17,6 +17,9 @@ class UserFilter(django_filters.FilterSet):
     # Search across multiple fields
     search = django_filters.CharFilter(method="filter_search")
 
+    # Filter managers who have created inquiries
+    inquiry_related = django_filters.BooleanFilter(method="filter_inquiry_related")
+
     class Meta:
         model = User
         fields = [
@@ -29,6 +32,7 @@ class UserFilter(django_filters.FilterSet):
             "is_active",
             "telegram_username",
             "search",
+            "inquiry_related",
         ]
 
     def filter_search(self, queryset, name, value):
@@ -45,3 +49,12 @@ class UserFilter(django_filters.FilterSet):
             | models.Q(last_name__icontains=value)
             | models.Q(telegram_username__icontains=value)
         )
+
+    def filter_inquiry_related(self, queryset, name, value):
+        """
+        Filter managers who have created inquiries
+        """
+        if value:
+            # Filter users who have related inquiries (sales_inquiries related_name)
+            return queryset.filter(sales_inquiries__isnull=False).distinct()
+        return queryset
