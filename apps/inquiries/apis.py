@@ -492,13 +492,88 @@ class InquiryStatsApiView(APIView):
     @extend_schema(
         tags=["Inquiries"],
         summary="Get Inquiry Statistics",
-        description="Get inquiry statistics filtered by current manager",
+        description="Get inquiry statistics filtered by manager, year, and month. Managers can only view their own stats, admins can view all or specific managers.",
+        parameters=[
+            OpenApiParameter(
+                "manager_id",
+                OpenApiTypes.INT,
+                description="Filter by sales manager ID (Admin only)",
+                required=False
+            ),
+            OpenApiParameter(
+                "year",
+                OpenApiTypes.INT,
+                description="Filter by year (e.g., 2024)",
+                required=False
+            ),
+            OpenApiParameter(
+                "month",
+                OpenApiTypes.INT,
+                description="Filter by month (1-12)",
+                required=False
+            ),
+        ],
         responses={200: InquiryStatsOutputSerializer},
     )
     def get(self, request):
-        # Admins see all data, managers see only their own data
-        manager_id = None if request.user.user_type == 'admin' else request.user.id
-        data = InquirySelectors.get_inquiries_stats(manager_id=manager_id)
+        # Parse query parameters
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        requested_manager_id = request.query_params.get('manager_id')
+
+        # Validate year parameter
+        if year is not None:
+            try:
+                year = int(year)
+                if year < 1900 or year > 9999:
+                    return Response(
+                        {"message": "Year must be between 1900 and 9999"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except ValueError:
+                return Response(
+                    {"message": "Invalid year format. Must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Validate month parameter
+        if month is not None:
+            try:
+                month = int(month)
+                if month < 1 or month > 12:
+                    return Response(
+                        {"message": "Month must be between 1 and 12"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except ValueError:
+                return Response(
+                    {"message": "Invalid month format. Must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Determine manager_id based on user role and permissions
+        if request.user.user_type == 'admin':
+            # Admins can filter by specific manager_id or see all
+            if requested_manager_id is not None:
+                try:
+                    manager_id = int(requested_manager_id)
+                except ValueError:
+                    return Response(
+                        {"message": "Invalid manager_id format. Must be an integer."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                manager_id = None  # All managers
+        else:
+            # Managers can only see their own data
+            manager_id = request.user.id
+
+        # Get statistics with filters
+        data = InquirySelectors.get_inquiries_stats(
+            manager_id=manager_id,
+            year=year,
+            month=month
+        )
 
         return Response(
             self.InquiryStatsOutputSerializer(data).data, status=status.HTTP_200_OK

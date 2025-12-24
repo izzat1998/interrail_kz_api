@@ -100,10 +100,19 @@ class InquirySelectors:
         return InquiryFilter(filters, qs).qs
 
     @staticmethod
-    def get_inquiries_stats(manager_id: int = None) -> dict[str, Any]:
+    def get_inquiries_stats(
+        manager_id: int = None,
+        year: int = None,
+        month: int = None
+    ) -> dict[str, Any]:
         """
         Get inquiry statistics using a single database query
-        Optionally filter by manager_id for manager-specific stats
+        Optionally filter by manager_id, year, and month for manager-specific stats
+
+        Args:
+            manager_id: Filter by sales manager ID
+            year: Filter by year (e.g., 2024)
+            month: Filter by month (1-12)
         """
         from django.db.models import Case, Count, IntegerField, When
 
@@ -113,6 +122,14 @@ class InquirySelectors:
         # Filter by manager if provided
         if manager_id is not None:
             queryset = queryset.filter(sales_manager_id=manager_id)
+
+        # Filter by year if provided
+        if year is not None:
+            queryset = queryset.filter(created_at__year=year)
+
+        # Filter by month if provided
+        if month is not None:
+            queryset = queryset.filter(created_at__month=month)
 
         stats = queryset.aggregate(
             total_inquiries=Count("id"),
